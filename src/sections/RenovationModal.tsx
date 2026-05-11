@@ -41,7 +41,7 @@ async function uploadToCloudinary(file: File): Promise<string> {
   const compressed = await imageCompression(file, {
     maxSizeMB: 0.5,
     maxWidthOrHeight: 1024,
-    useWebWorker: true,
+    useWebWorker: false,
     fileType: 'image/jpeg',
   });
 
@@ -124,19 +124,46 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
     'Tuzla','Ümraniye','Üsküdar','Zeytinburnu'
   ];
 
-  // Direct API call (no tRPC)
+  // Direct API call (no tRPC) with debug logging
   const callRenovateAPI = async (imageUrl: string, command: string) => {
+    console.log('[Frontend] Calling /api/renovate with:', { imageUrl: imageUrl.slice(0, 50), command: command.slice(0, 50) });
+
     const res = await fetch('/api/renovate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ imageUrl, command }),
     });
+
+    console.log('[Frontend] Response status:', res.status);
+
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`API error ${res.status}: ${text}`);
+      console.error('[Frontend] Error response:', text.slice(0, 200));
+      throw new Error(`API error ${res.status}: ${text.slice(0, 200)}`);
     }
-    return res.json();
+
+    // Check if response body is empty before parsing JSON
+    const text = await res.text();
+    if (!text || text.trim() === '') {
+      throw new Error('API returned empty response');
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch (parseErr) {
+      console.error('[Frontend] JSON parse error, raw text:', text.slice(0, 200));
+      throw new Error(`Invalid JSON from API: ${text.slice(0, 100)}`);
+    }
   };
+
+  // Debug: Check if API is reachable on mount
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/debug')
+      .then(r => r.json().catch(() => ({ ok: false, error: 'Not JSON' })))
+      .then(d => console.log('[Frontend] API debug:', d))
+      .catch(e => console.error('[Frontend] API unreachable:', e.message));
+  }, [isOpen]);
 
   // Refs
   const overlayRef = useRef<HTMLDivElement>(null);
