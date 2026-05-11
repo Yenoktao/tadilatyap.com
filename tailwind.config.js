@@ -4,7 +4,16 @@ module.exports = {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
+      fontFamily: {
+        raleway: ['Raleway', 'sans-serif'],
+      },
       colors: {
+        'bg-primary': '#F4F4F4',
+        'bg-dark': '#111111',
+        'bg-concrete': '#1A1A1A',
+        'text-primary': '#111111',
+        'text-inverse': '#FFFFFF',
+        'accent-blue': '#74B9FF',
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
