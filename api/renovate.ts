@@ -21,16 +21,20 @@ export const renovateRouter = createRouter({
           {
             input: {
               prompt: `A premium interior renovation of the following room: ${input.command}. Highly detailed, architectural photography style, 8K quality, photorealistic. Preserve the structural layout including windows, walls, and doors. Use high-end modern materials and lighting.`,
-              image_input: input.imageUrl,
-              size: "2K",
-              aspect_ratio: "match_input_image",
-              enhance_prompt: true,
+              image: input.imageUrl,
+              width: 1024,
+              height: 1024,
             },
           }
         );
 
-        // Replicate output is usually a string URL or array of URLs
-        const resultUrl = Array.isArray(output) ? output[0] : output;
+        // Replicate output can be string URL, array of URLs, or ReadableStream
+        let resultUrl: string | null = null;
+        if (Array.isArray(output) && output.length > 0) {
+          resultUrl = typeof output[0] === 'string' ? output[0] : null;
+        } else if (typeof output === 'string') {
+          resultUrl = output;
+        }
 
         return {
           success: true,
@@ -61,14 +65,18 @@ export const renovateRouter = createRouter({
           {
             input: {
               prompt: `Premium interior renovation visualization: ${input.command}. ${input.metrekare ? `Space approximately ${input.metrekare} square meters.` : ""} Photorealistic architectural photography, 8K quality, modern luxury design, natural lighting, high-end materials.`,
-              size: "2K",
-              aspect_ratio: "9:16",
-              enhance_prompt: true,
+              width: 1024,
+              height: 1024,
             },
           }
         );
 
-        const resultUrl = Array.isArray(output) ? output[0] : output;
+        let resultUrl: string | null = null;
+        if (Array.isArray(output) && output.length > 0) {
+          resultUrl = typeof output[0] === 'string' ? output[0] : null;
+        } else if (typeof output === 'string') {
+          resultUrl = output;
+        }
 
         return {
           success: true,

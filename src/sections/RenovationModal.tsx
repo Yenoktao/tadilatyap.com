@@ -38,20 +38,31 @@ const tadilatAlanlari = ['Komple Ev', 'Mutfak', 'Banyo', 'Salon', 'Yatak Odası'
 
 // ─── Cloudinary upload ───
 async function uploadToCloudinary(file: File): Promise<string> {
+  // Step 1: Compress to max 1024px, ~500KB
   const compressed = await imageCompression(file, {
+    maxSizeMB: 0.5,
     maxWidthOrHeight: 1024,
     useWebWorker: true,
     fileType: 'image/jpeg',
   });
+
+  // Step 2: Upload to Cloudinary (unsigned preset)
   const formData = new FormData();
-  formData.append('file', compressed);
+  formData.append('file', compressed, 'renovation.jpg');
   formData.append('upload_preset', 'tadilatyap_upload');
+
   const res = await fetch('https://api.cloudinary.com/v1_1/drqmyuwsg/image/upload', {
     method: 'POST',
     body: formData,
   });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || `Cloudinary upload failed: ${res.status}`);
+  }
+
   const data = await res.json();
-  if (!data.secure_url) throw new Error('Upload failed');
+  if (!data.secure_url) throw new Error('Cloudinary returned no URL');
   return data.secure_url;
 }
 
@@ -102,6 +113,7 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
   const [kredi, setKredi] = useState(3);
   const [callForm, setCallForm] = useState({ ad: '', telefon: '' });
   const [showCallForm, setShowCallForm] = useState(false);
+  const [error, setError] = useState('');
 
   // İlçe listesi
   const istanbulIlceler = [
@@ -134,6 +146,7 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
     setKredi(3);
     setCallForm({ ad: '', telefon: '' }); setShowCallForm(false);
     setIlceSearch(''); setShowIlceDropdown(false);
+    setError('');
   }, [isOpen]);
 
   // ─── Entrance ───
@@ -202,15 +215,23 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
 
       // Step 1: Compress & upload to Cloudinary
       setProgress(15);
-      const uploadedUrl = await uploadToCloudinary(imgFile);
-      setCloudinaryUrl(uploadedUrl);
+      let uploadedUrl: string;
+      try {
+        uploadedUrl = await uploadToCloudinary(imgFile);
+        setCloudinaryUrl(uploadedUrl);
+      } catch (uploadErr: any) {
+        console.error('Cloudinary upload error:', uploadErr);
+        setError('Fotoğraf yüklenirken hata: ' + (uploadErr.message || 'Tekrar deneyin'));
+        setStep('upload');
+        return;
+      }
 
       setProgress(35);
 
-      // Step 2: Call AI via tRPC
+      // Step 2: Call AI via tRPC (15-20s timeout)
       const progressInterval = setInterval(() => {
         setProgress(p => Math.min(p + 2, 85));
-      }, 600);
+      }, 800);
 
       const result = await generateMutation.mutateAsync({
         imageUrl: uploadedUrl,
@@ -222,15 +243,16 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
       if (result.success && result.resultUrl) {
         setGeneratedImage(result.resultUrl);
       } else {
-        // Fallback
+        setError('AI sonuç üretemedi, örnek gösteriliyor');
         setGeneratedImage('/assets/hero-1.jpg');
       }
 
       await new Promise(r => setTimeout(r, 300));
       setProgress(100);
       setStep('result');
-    } catch (err) {
-      console.error('AI error:', err);
+    } catch (err: any) {
+      console.error('AI generation error:', err);
+      setError('AI bağlantı hatası: ' + (err.message || 'Tekrar deneyin'));
       setGeneratedImage('/assets/hero-1.jpg');
       setProgress(100);
       setStep('result');
@@ -241,13 +263,20 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
   const handleRevize = async () => {
     if (kredi <= 0 || !cloudinaryUrl) return;
     setKredi(k => k - 1);
+    setError('');
     try {
       const result = await generateMutation.mutateAsync({
         imageUrl: cloudinaryUrl,
         command: `${selectedStyle} ${tadilatAlani} interior renovation (alternative)`,
       });
-      if (result.success && result.resultUrl) setGeneratedImage(result.resultUrl);
-    } catch { /* keep current */ }
+      if (result.success && result.resultUrl) {
+        setGeneratedImage(result.resultUrl);
+      } else {
+        setError('YZ alternatif tarz üretemedi');
+      }
+    } catch (err: any) {
+      setError('YZ bağlantı hatası: ' + (err.message || 'Tekrar deneyin'));
+    }
   };
 
   // ─── WhatsApp link ───
@@ -472,6 +501,12 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
                 </div>
                 <p className="font-raleway text-white/20 text-xs mt-3 text-right">%{progress}</p>
               </div>
+              {error && (
+                <div className="mt-4 flex items-center gap-2 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-lg max-w-xs mx-auto">
+                  <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
+                  <p className="font-raleway text-red-300 text-xs">{error}</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -528,7 +563,13 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
                 </button>
               </div>
 
-              {kredi === 0 && (
+              {error && (
+                <div className="mt-4 flex items-center gap-2 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                  <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
+                  <p className="font-raleway text-red-300 text-xs">{error}</p>
+                </div>
+              )}
+              {kredi === 0 && !error && (
                 <div className="flex items-center gap-3 px-4 py-3 bg-amber-500/5 border border-amber-500/15 rounded-lg">
                   <AlertCircle size={16} className="text-amber-400 flex-shrink-0" />
                   <p className="font-raleway text-amber-300/80 text-xs">Günlük ücretsiz YZ limitiniz doldu. Fiyatı netleştirmek için devam edin.</p>
