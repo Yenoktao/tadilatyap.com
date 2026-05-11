@@ -1,12 +1,19 @@
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 
-export type TrpcContext = {
-  req: Request;
-  resHeaders: Headers;
-};
-
-export async function createContext(
-  opts: FetchCreateContextFnOptions,
-): Promise<TrpcContext> {
-  return { req: opts.req, resHeaders: opts.resHeaders };
+// Cloudflare Pages environment type
+export interface Env {
+  REPLICATE_API_TOKEN: string;
+  DATABASE_URL?: string;
 }
+
+// Build context for each request
+export function createContext(
+  _opts: FetchCreateContextFnOptions,
+  env?: Env
+) {
+  return {
+    env,
+  };
+}
+
+export type Context = Awaited<ReturnType<typeof createContext>>;

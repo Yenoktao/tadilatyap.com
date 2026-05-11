@@ -1,0 +1,10 @@
+name = "tadilatyap"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# These will be overridden by Cloudflare Dashboard secrets
+# REPLICATE_API_TOKEN should be set via: wrangler secret put REPLICATE_API_TOKEN
+
+[[env.production.vars]]
+# Production variables
