@@ -13,7 +13,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "deploy": "vite build && wrangler pages deploy dist",
-    "deploy:full": "vite build && cp -r functions dist/ && wrangler pages deploy dist",
+    "deploy:full": "vite build && wrangler pages deploy dist",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push"

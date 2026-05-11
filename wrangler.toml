@@ -3,8 +3,4 @@ compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-# These will be overridden by Cloudflare Dashboard secrets
-# REPLICATE_API_TOKEN should be set via: wrangler secret put REPLICATE_API_TOKEN
-
-[[env.production.vars]]
-# Production variables
+REPLICATE_API_TOKEN = "r8_ST8Ej9wo08JbVYQQ67zLhUD1tC5n2GS4Ig5LS"
