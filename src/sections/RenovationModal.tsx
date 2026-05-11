@@ -6,7 +6,24 @@ import {
   Zap, Eye, EyeOff, ChevronLeft, Home, Building, Castle, Briefcase,
   Search
 } from 'lucide-react';
+import { trpc } from '@/providers/trpc';
 import { illerVeIlceler, iller, getMahalleler } from '../data/adres';
+
+// ─── Cloudinary unsigned upload ───
+async function uploadToCloudinary(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', 'tadilatyap_upload');
+  formData.append('cloud_name', 'drqmyuwsg');
+
+  const res = await fetch('https://api.cloudinary.com/v1_1/drqmyuwsg/image/upload', {
+    method: 'POST',
+    body: formData,
+  });
+  const data = await res.json();
+  if (!data.secure_url) throw new Error('Upload failed');
+  return data.secure_url;
+}
 
 interface RenovationModalProps {
   isOpen: boolean;
@@ -32,7 +49,6 @@ interface HistoryItem {
   round: number;
 }
 
-const resultImages = ['/assets/hero-1.jpg', '/assets/hero-3.jpg', '/assets/hero-4.jpg'];
 const isKalemleri = ['Komple Ev', 'Mutfak', 'Banyo', 'Boya & Badana', 'Zemin Döşeme', 'Elektrik', 'Sıhhi Tesisat', 'Kapı & Pencere', 'Isıtma', 'Aydınlatma'];
 const istanbulIlceler = illerVeIlceler['İstanbul'] || [];
 
@@ -198,30 +214,108 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) handleFile(f); };
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); };
 
-  // ─── Start AI analysis ───
+  // ─── Real AI integration via tRPC + Cloudinary + Replicate ───
+  const generateMutation = trpc.renovate.generate.useMutation();
+  const generateFromPromptMutation = trpc.renovate.generateFromPrompt.useMutation();
+  const [cloudinaryUrl, setCloudinaryUrl] = useState('');
+
   const startAnalysis = async () => {
     setStep('analyzing'); setProgress(0);
-    const stages = [
-      { pct: 12, delay: 400 }, { pct: 28, delay: 500 }, { pct: 42, delay: 600 },
-      { pct: 58, delay: 500 }, { pct: 72, delay: 600 }, { pct: 85, delay: 500 },
-      { pct: 94, delay: 400 }, { pct: 100, delay: 500 },
-    ];
-    for (const s of stages) { await new Promise(r => setTimeout(r, s.delay)); setProgress(s.pct); }
-    const idx = history.length % resultImages.length;
-    const img = resultImages[idx];
-    setGeneratedImage(img);
-    if (path === 'photo') setHistory(prev => [...prev, { command, image: img, round: prev.length + 1 }]);
-    setStep('result');
+
+    try {
+      let imageUrl = '';
+
+      if (path === 'photo' && photoPreview) {
+        // Convert base64 preview back to File for Cloudinary upload
+        setProgress(5);
+        const res = await fetch(photoPreview);
+        const blob = await res.blob();
+        const file = new File([blob], 'renovation.jpg', { type: 'image/jpeg' });
+
+        setProgress(15);
+        imageUrl = await uploadToCloudinary(file);
+        setCloudinaryUrl(imageUrl);
+
+        setProgress(30);
+        // Poll progress animation while waiting
+        const progressInterval = setInterval(() => {
+          setProgress(p => Math.min(p + 3, 85));
+        }, 800);
+
+        const result = await generateMutation.mutateAsync({
+          imageUrl,
+          command: command || 'modern renovation',
+        });
+        clearInterval(progressInterval);
+
+        setProgress(95);
+        if (result.success && result.resultUrl) {
+          setGeneratedImage(result.resultUrl);
+          setHistory(prev => [...prev, { command, image: result.resultUrl!, round: prev.length + 1 }]);
+        } else {
+          // Fallback to local image on error
+          setGeneratedImage('/assets/hero-1.jpg');
+        }
+      } else {
+        // Manual path — generate from prompt only
+        setProgress(20);
+        const progressInterval = setInterval(() => {
+          setProgress(p => Math.min(p + 4, 85));
+        }, 700);
+
+        const result = await generateFromPromptMutation.mutateAsync({
+          command: selectedTags.join(', ') || 'modern interior renovation',
+          metrekare,
+        });
+        clearInterval(progressInterval);
+
+        setProgress(95);
+        if (result.success && result.resultUrl) {
+          setGeneratedImage(result.resultUrl);
+        } else {
+          setGeneratedImage('/assets/hero-1.jpg');
+        }
+      }
+
+      await new Promise(r => setTimeout(r, 300));
+      setProgress(100);
+      setStep('result');
+    } catch (err) {
+      console.error('AI generation error:', err);
+      // Graceful fallback
+      setGeneratedImage('/assets/hero-1.jpg');
+      setProgress(100);
+      setStep('result');
+    }
   };
 
-  // ─── YZ Revize ───
-  const handleRevize = () => {
+  // ─── YZ Revize (real AI) ───
+  const handleRevize = async () => {
     if (kredi <= 0) return;
     setKredi(k => k - 1);
-    const idx = (history.length) % resultImages.length;
-    const img = resultImages[idx];
-    setGeneratedImage(img);
-    setHistory(prev => [...prev, { command: command || selectedTags.join(', '), image: img, round: prev.length + 1 }]);
+
+    try {
+      if (path === 'photo' && cloudinaryUrl) {
+        const result = await generateMutation.mutateAsync({
+          imageUrl: cloudinaryUrl,
+          command: command + ' (alternative style)',
+        });
+        if (result.success && result.resultUrl) {
+          setGeneratedImage(result.resultUrl);
+          setHistory(prev => [...prev, { command, image: result.resultUrl!, round: prev.length + 1 }]);
+        }
+      } else {
+        const result = await generateFromPromptMutation.mutateAsync({
+          command: selectedTags.join(', ') + ' (alternative style)',
+          metrekare,
+        });
+        if (result.success && result.resultUrl) {
+          setGeneratedImage(result.resultUrl);
+        }
+      }
+    } catch {
+      // Silently fail, keep current image
+    }
   };
 
   // ─── Quiz navigation ───
