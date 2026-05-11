@@ -1,163 +1,176 @@
-import { Hono } from "hono";
-import { cors } from "hono/cors";
+// Cloudflare Pages Functions — Raw API (no Hono, no framework)
+// Handles all /api/* requests
 
-// ─── Simple REST API for Cloudflare Pages ───
-const app = new Hono<{ Bindings: { REPLICATE_API_TOKEN: string } }>();
+export const onRequest = async (context: any) => {
+  const { request, env } = context;
+  const url = new URL(request.url);
+  const path = url.pathname;
 
-// CORS - allow all origins (Cloudflare Pages handles this internally,
-// but we add it for safety when testing)
-app.use("/*", cors({ origin: "*" }));
+  // CORS headers
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Content-Type": "application/json",
+  };
 
-// Health check
-app.get("/health", (c) => c.json({ ok: true, env: !!c.env.REPLICATE_API_TOKEN }));
-
-// Debug endpoint - verify API is reachable
-app.get("/debug", (c) => {
-  return c.json({
-    ok: true,
-    message: "API is reachable",
-    timestamp: new Date().toISOString(),
-    hasToken: !!c.env.REPLICATE_API_TOKEN,
-    tokenLength: c.env.REPLICATE_API_TOKEN?.length || 0,
-  });
-});
-
-// Replicate AI generation endpoint
-app.post("/renovate", async (c) => {
-  console.log("[/api/renovate] POST received");
-
-  const env = c.env;
-  const token = env.REPLICATE_API_TOKEN;
-
-  if (!token) {
-    console.error("[/api/renovate] REPLICATE_API_TOKEN not configured");
-    return c.json({ success: false, error: "REPLICATE_API_TOKEN not configured in Cloudflare environment variables" }, 500);
+  // Handle preflight
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  // Parse request body
-  let body: { imageUrl?: string; command?: string };
-  try {
-    body = await c.req.json();
-    console.log("[/api/renovate] Body parsed:", { imageUrl: body.imageUrl?.slice(0, 50), command: body.command?.slice(0, 50) });
-  } catch (parseErr) {
-    console.error("[/api/renovate] Failed to parse request body:", parseErr);
-    return c.json({ success: false, error: "Invalid JSON in request body" }, 400);
-  }
-
-  const { imageUrl, command } = body;
-
-  if (!command) {
-    return c.json({ success: false, error: "Missing 'command' field" }, 400);
-  }
-
-  try {
-    const prompt = `A premium interior renovation of the following room: ${command}. Highly detailed, architectural photography style, 8K quality, photorealistic. Preserve the structural layout including windows, walls, and doors. Use high-end modern materials and lighting.`;
-
-    console.log("[/api/renovate] Creating Replicate prediction...");
-
-    // Step 1: Create prediction
-    const replicateInput: any = {
-      prompt,
-      width: 1024,
-      height: 1024,
-    };
-
-    if (imageUrl) {
-      replicateInput.image = imageUrl;
-    }
-
-    const createRes = await fetch(
-      "https://api.replicate.com/v1/models/bytedance/seedream-4/predictions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Token ${token}`,
-          "Content-Type": "application/json",
-          "Prefer": "wait", // Try synchronous first (up to 60s)
-        },
-        body: JSON.stringify({ input: replicateInput }),
-      }
+  // GET /api/debug — Token kontrolü
+  if (path === "/api/debug" && request.method === "GET") {
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        hasToken: !!env.REPLICATE_API_TOKEN,
+        tokenLength: env.REPLICATE_API_TOKEN?.length || 0,
+        timestamp: new Date().toISOString(),
+      }),
+      { headers: corsHeaders }
     );
+  }
 
-    console.log("[/api/renovate] Replicate create response status:", createRes.status);
+  // GET /api/health — Sağlık kontrolü
+  if (path === "/api/health" && request.method === "GET") {
+    return new Response(
+      JSON.stringify({ ok: true, env: !!env.REPLICATE_API_TOKEN }),
+      { headers: corsHeaders }
+    );
+  }
 
-    if (!createRes.ok) {
-      const errText = await createRes.text();
-      console.error("[/api/renovate] Replicate create error:", createRes.status, errText);
-      return c.json({ success: false, error: `Replicate API error ${createRes.status}: ${errText.slice(0, 200)}` }, 500);
+  // POST /api/renovate — AI görsel üretimi
+  if (path === "/api/renovate" && request.method === "POST") {
+    const token = env.REPLICATE_API_TOKEN;
+    if (!token) {
+      return new Response(
+        JSON.stringify({ success: false, error: "REPLICATE_API_TOKEN not configured" }),
+        { status: 500, headers: corsHeaders }
+      );
     }
 
-    const prediction = await createRes.json() as any;
-    console.log("[/api/renovate] Prediction created:", prediction.id, "status:", prediction.status);
+    try {
+      // Parse request body
+      const body = await request.json();
+      const { imageUrl, command } = body;
 
-    // If synchronous wait succeeded immediately
-    if (prediction.status === "succeeded" && prediction.output) {
-      let resultUrl: string | null = null;
-      const output = prediction.output;
-      if (Array.isArray(output) && output.length > 0) {
-        resultUrl = typeof output[0] === "string" ? output[0] : null;
-      } else if (typeof output === "string") {
-        resultUrl = output;
+      if (!command) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Missing 'command' field" }),
+          { status: 400, headers: corsHeaders }
+        );
       }
-      console.log("[/api/renovate] Synchronous result:", resultUrl?.slice(0, 80));
-      return c.json({ success: true, resultUrl });
-    }
 
-    const predictionId = prediction.id;
-    if (!predictionId) {
-      return c.json({ success: false, error: "No prediction ID returned" }, 500);
-    }
+      const prompt = `A premium interior renovation: ${command}. Highly detailed, architectural photography style, 8K quality, photorealistic.`;
 
-    // Step 2: Poll for result
-    console.log("[/api/renovate] Polling for result...");
-    let result: any = null;
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 3000));
+      // Call Replicate API
+      const replicateInput: any = {
+        prompt,
+        width: 1024,
+        height: 1024,
+      };
+      if (imageUrl) replicateInput.image = imageUrl;
 
-      const pollRes = await fetch(
-        `https://api.replicate.com/v1/predictions/${predictionId}`,
-        { headers: { Authorization: `Token ${token}` } }
+      const createRes = await fetch(
+        "https://api.replicate.com/v1/models/bytedance/seedream-4/predictions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${token}`,
+            "Content-Type": "application/json",
+            Prefer: "wait",
+          },
+          body: JSON.stringify({ input: replicateInput }),
+        }
       );
 
-      if (!pollRes.ok) {
-        console.log(`[/api/renovate] Poll ${i}: HTTP ${pollRes.status}`);
-        continue;
+      if (!createRes.ok) {
+        const errText = await createRes.text();
+        return new Response(
+          JSON.stringify({ success: false, error: `Replicate error ${createRes.status}: ${errText.slice(0, 200)}` }),
+          { status: 500, headers: corsHeaders }
+        );
       }
 
-      const pollData = await pollRes.json() as any;
-      console.log(`[/api/renovate] Poll ${i}: status=${pollData.status}`);
+      const prediction = (await createRes.json()) as any;
 
-      if (pollData.status === "succeeded") {
-        result = pollData.output;
-        break;
+      // If synchronous wait succeeded
+      if (prediction.status === "succeeded" && prediction.output) {
+        const output = prediction.output;
+        let resultUrl: string | null = null;
+        if (Array.isArray(output) && output.length > 0) {
+          resultUrl = typeof output[0] === "string" ? output[0] : null;
+        } else if (typeof output === "string") {
+          resultUrl = output;
+        }
+        return new Response(
+          JSON.stringify({ success: true, resultUrl }),
+          { headers: corsHeaders }
+        );
       }
-      if (pollData.status === "failed" || pollData.status === "canceled") {
-        return c.json({ success: false, error: `Prediction ${pollData.status}: ${pollData.error || "Unknown error"}` }, 500);
+
+      // Async: poll for result
+      const predictionId = prediction.id;
+      if (!predictionId) {
+        return new Response(
+          JSON.stringify({ success: false, error: "No prediction ID" }),
+          { status: 500, headers: corsHeaders }
+        );
       }
+
+      // Poll
+      let result: any = null;
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const pollRes = await fetch(
+          `https://api.replicate.com/v1/predictions/${predictionId}`,
+          { headers: { Authorization: `Token ${token}` } }
+        );
+        if (!pollRes.ok) continue;
+        const pollData = (await pollRes.json()) as any;
+        if (pollData.status === "succeeded") {
+          result = pollData.output;
+          break;
+        }
+        if (pollData.status === "failed" || pollData.status === "canceled") {
+          return new Response(
+            JSON.stringify({ success: false, error: `Prediction ${pollData.status}` }),
+            { status: 500, headers: corsHeaders }
+          );
+        }
+      }
+
+      if (!result) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Prediction timed out" }),
+          { status: 504, headers: corsHeaders }
+        );
+      }
+
+      let resultUrl: string | null = null;
+      if (Array.isArray(result) && result.length > 0) {
+        resultUrl = typeof result[0] === "string" ? result[0] : null;
+      } else if (typeof result === "string") {
+        resultUrl = result;
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, resultUrl }),
+        { headers: corsHeaders }
+      );
+
+    } catch (err: any) {
+      return new Response(
+        JSON.stringify({ success: false, error: err.message || "Unknown error" }),
+        { status: 500, headers: corsHeaders }
+      );
     }
-
-    if (!result) {
-      return c.json({ success: false, error: "Prediction timed out after 60 seconds" }, 504);
-    }
-
-    // Parse output
-    let resultUrl: string | null = null;
-    if (Array.isArray(result) && result.length > 0) {
-      resultUrl = typeof result[0] === "string" ? result[0] : null;
-    } else if (typeof result === "string") {
-      resultUrl = result;
-    }
-
-    console.log("[/api/renovate] Result URL:", resultUrl?.slice(0, 80));
-    return c.json({ success: true, resultUrl });
-
-  } catch (err: any) {
-    console.error("[/api/renovate] Unhandled error:", err.message);
-    return c.json({ success: false, error: err.message || "AI generation failed" }, 500);
   }
-});
 
-// ─── Cloudflare Pages export ───
-export const onRequest = (context: any) => {
-  return app.fetch(context.request, context.env);
+  // 404 for unknown paths
+  return new Response(
+    JSON.stringify({ error: "Not found", path }),
+    { status: 404, headers: corsHeaders }
+  );
 };
