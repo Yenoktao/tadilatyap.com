@@ -6,12 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:cf": "vite build && cp -r functions dist/",
     "preview": "vite preview",
     "check": "tsc -b",
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "deploy": "wrangler pages deploy dist",
+    "deploy": "vite build && wrangler pages deploy dist",
+    "deploy:full": "vite build && cp -r functions dist/ && wrangler pages deploy dist",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push"

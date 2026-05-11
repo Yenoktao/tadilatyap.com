@@ -1,11 +1,10 @@
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
-import { appRouter } from "../../../api/router";
-import { createContext } from "../../../api/context";
+import { appRouter } from "./router";
+import { createContext } from "./context";
 
 // Cloudflare Pages Functions - tRPC API handler
-// This file handles all /api/* requests
-// tRPC endpoint is /api/trpc
-export const onRequest: PagesFunction<Env> = async (context) => {
+// Handles all /api/* requests
+export const onRequest = async (context: any) => {
   const { request, env } = context;
 
   return fetchRequestHandler({
