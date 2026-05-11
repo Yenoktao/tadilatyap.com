@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import gsap from 'gsap';
 import {
   X, Camera, Sparkles, ChevronRight, RefreshCw, Check, AlertCircle,
-  ImagePlus, MapPin, Phone, Zap, Eye, EyeOff, ChevronLeft, Home,
-  Building, Castle, Briefcase, Search, Send
+  ImagePlus, MapPin, Phone, Zap, Eye, EyeOff, Home,
+  Building, Castle
 } from 'lucide-react';
 import { trpc } from '@/providers/trpc';
 import imageCompression from 'browser-image-compression';
@@ -115,7 +115,6 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
 
   // tRPC mutations
   const generateMutation = trpc.renovate.generate.useMutation();
-  const generatePromptMutation = trpc.renovate.generateFromPrompt.useMutation();
 
   // Refs
   const overlayRef = useRef<HTMLDivElement>(null);
