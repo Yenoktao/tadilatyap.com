@@ -5,7 +5,6 @@ import {
   ImagePlus, MapPin, Phone, Zap, Eye, EyeOff, Home,
   Building, Castle
 } from 'lucide-react';
-import { trpc } from '@/providers/trpc';
 import imageCompression from 'browser-image-compression';
 
 interface RenovationModalProps {
@@ -125,8 +124,19 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
     'Tuzla','Ümraniye','Üsküdar','Zeytinburnu'
   ];
 
-  // tRPC mutations
-  const generateMutation = trpc.renovate.generate.useMutation();
+  // Direct API call (no tRPC)
+  const callRenovateAPI = async (imageUrl: string, command: string) => {
+    const res = await fetch('/api/renovate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageUrl, command }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`API error ${res.status}: ${text}`);
+    }
+    return res.json();
+  };
 
   // Refs
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -233,10 +243,10 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
         setProgress(p => Math.min(p + 2, 85));
       }, 800);
 
-      const result = await generateMutation.mutateAsync({
-        imageUrl: uploadedUrl,
-        command: `${selectedStyle} ${tadilatAlani} interior renovation`,
-      });
+      const result = await callRenovateAPI(
+        uploadedUrl,
+        `${selectedStyle} ${tadilatAlani} interior renovation`
+      );
       clearInterval(progressInterval);
 
       setProgress(95);
@@ -265,10 +275,10 @@ export default function RenovationModal({ isOpen, onClose }: RenovationModalProp
     setKredi(k => k - 1);
     setError('');
     try {
-      const result = await generateMutation.mutateAsync({
-        imageUrl: cloudinaryUrl,
-        command: `${selectedStyle} ${tadilatAlani} interior renovation (alternative)`,
-      });
+      const result = await callRenovateAPI(
+        cloudinaryUrl,
+        `${selectedStyle} ${tadilatAlani} interior renovation (alternative)`
+      );
       if (result.success && result.resultUrl) {
         setGeneratedImage(result.resultUrl);
       } else {
