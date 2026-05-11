@@ -2,12 +2,8 @@ import path from "path"
 const __dirname = import.meta.dirname
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
-import { inspectAttr } from 'kimi-plugin-inspect-react'
-
-// Cloudflare Pages - Frontend build only
-// Backend runs in functions/ directory (Edge Functions)
 export default defineConfig({
-  plugins: [inspectAttr(), react()],
+  plugins: [react()],
   server: {
     port: 3000,
     proxy: {
@@ -21,7 +17,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "@contracts": path.resolve(__dirname, "./contracts"),
     },
   },
   envDir: path.resolve(__dirname),
