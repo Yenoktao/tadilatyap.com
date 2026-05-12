@@ -6,7 +6,9 @@ import { cors } from "hono/cors";
 // Hono basePath is set to "/api" so routes are relative to /api/.
 // e.g., app.get("/debug") handles GET /api/debug
 
-const app = new Hono<{ Bindings: { REPLICATE_API_TOKEN: string } }>();
+// CRITICAL: basePath('/api') ensures Hono matches /api/* routes correctly.
+// Without this, app.post('/renovate') won't match /api/renovate.
+const app = new Hono<{ Bindings: { REPLICATE_API_TOKEN: string } }>().basePath('/api');
 
 // CORS
 app.use("/*", cors({
