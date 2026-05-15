@@ -88,6 +88,7 @@ function TopographicMesh({ scrollSpeed }: { scrollSpeed: number }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const mouseRef = useRef({ x: 0.5, y: 0.5 });
   const materialRef = useRef<THREE.ShaderMaterial>(null);
+  const timerRef = useRef<THREE.Timer | null>(null);
 
   const uniforms = useRef({
     uTime: { value: 0 },
@@ -98,6 +99,8 @@ function TopographicMesh({ scrollSpeed }: { scrollSpeed: number }) {
   });
 
   useEffect(() => {
+    timerRef.current = new THREE.Timer();
+    timerRef.current.start();
     const handleMouseMove = (e: MouseEvent) => {
       const { clientX, clientY } = e;
       const { innerWidth, innerHeight } = window;
@@ -107,12 +110,16 @@ function TopographicMesh({ scrollSpeed }: { scrollSpeed: number }) {
       };
     };
     window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      timerRef.current?.dispose();
+    };
   }, []);
 
-  useFrame((state) => {
-    if (materialRef.current) {
-      materialRef.current.uniforms.uTime.value = state.clock.elapsedTime;
+  useFrame(() => {
+    timerRef.current?.update();
+    if (materialRef.current && timerRef.current) {
+      materialRef.current.uniforms.uTime.value = timerRef.current.getElapsed();
       materialRef.current.uniforms.uScrollSpeed.value +=
         (scrollSpeed - materialRef.current.uniforms.uScrollSpeed.value) * 0.08;
       materialRef.current.uniforms.uMouse.value.lerp(

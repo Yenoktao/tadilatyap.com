@@ -2,12 +2,12 @@ import path from "path"
 const __dirname = import.meta.dirname
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
     proxy: {
-      // Proxy API calls to a local dev server during development
       '/api': {
         target: 'http://localhost:8788',
         changeOrigin: true,
