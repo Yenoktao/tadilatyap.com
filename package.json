@@ -93,5 +93,11 @@
     "vite": "^7.2.4",
     "vitest": "^4.0.16",
     "wrangler": "^3.78.0"
+  },
+  "postcss": {
+    "plugins": {
+      "tailwindcss": {},
+      "autoprefixer": {}
+    }
   }
 }

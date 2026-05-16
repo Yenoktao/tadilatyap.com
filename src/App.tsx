@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import gsap from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import ScrollTrigger from 'gsap/ScrollTrigger';
 import Navigation from './sections/Navigation';
 import Hero from './sections/Hero';
 import Philosophy from './sections/Philosophy';
@@ -12,7 +12,7 @@ import Contact from './sections/Contact';
 import Footer from './sections/Footer';
 import RenovationModal from './sections/RenovationModal';
 
-gsap.registerPlugin(ScrollTrigger);
+// gsap.registerPlugin(ScrollTrigger); // DEBUG disabled
 
 function App() {
   const mainRef = useRef<HTMLDivElement>(null);
