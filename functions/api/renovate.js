@@ -20,7 +20,7 @@ export async function onRequestPost(context) {
     const formData = await request.formData();
     const prompt = formData.get("command") || formData.get("prompt");
     const imageFile = formData.get("image");
-    const strength = parseFloat(formData.get("strength") || "0.35");
+    const strength = parseFloat(formData.get("strength") || "0.75");
     const numSteps = parseInt(formData.get("num_steps") || "20", 10);
 
     if (!prompt || typeof prompt !== "string") {
@@ -38,9 +38,6 @@ export async function onRequestPost(context) {
     const model = "@cf/runwayml/stable-diffusion-v1-5-img2img";
     const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/${model}`;
 
-    // Prompt'u yapısal formata çevir — SD'nin anlayacağı şekilde
-    const structuredPrompt = `Architectural renovation of existing building: ${prompt}. Maintain original structure, walls, roof, and proportions. Photorealistic, high quality, detailed. Do not change building layout or camera angle.`;
-
     const aiResponse = await fetch(url, {
       method: "POST",
       headers: {
@@ -48,11 +45,11 @@ export async function onRequestPost(context) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        prompt: structuredPrompt,
+        prompt: prompt,
         image: imageArray,
         strength: clamp(strength, 0, 1),
         num_steps: clamp(numSteps, 1, 20),
-        guidance: 5.0
+        guidance: 7.5
       })
     });
 
