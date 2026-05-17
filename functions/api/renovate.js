@@ -1,15 +1,10 @@
-// Cloudflare Pages Function — POST /generate
-// Kullanıcının yüklediği görseli + prompt'u alır,
-// Cloudflare Workers AI img2img modeline gönderir,
-// üretilen görseli (PNG) geri döner.
-
 export async function onRequestPost(context) {
   const { request, env } = context;
 
   try {
-    // Env kontrol
-    if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) {
-      return jsonError("CF_API_TOKEN veya CF_ACCOUNT_ID environment variable eksik", 500);
+    const token = env.REPLICATE_API_TOKEN;
+    if (!token) {
+      return jsonError("REPLICATE_API_TOKEN eksik", 500);
     }
 
     const contentType = request.headers.get("content-type") || "";
@@ -18,86 +13,83 @@ export async function onRequestPost(context) {
     }
 
     const formData = await request.formData();
-    const prompt = formData.get("command") || formData.get("prompt");
+    const command = formData.get("command");
     const imageFile = formData.get("image");
-    const strength = parseFloat(formData.get("strength") || "0.75");
-    const numSteps = parseInt(formData.get("num_steps") || "20", 10);
+    const strength = parseFloat(formData.get("strength") || "0.35");
 
-    if (!prompt || typeof prompt !== "string") {
-      return jsonError("prompt/command zorunlu", 400);
+    if (!command || typeof command !== "string") {
+      return jsonError("command zorunlu", 400);
     }
     if (!imageFile || typeof imageFile === "string") {
       return jsonError("image zorunlu (dosya)", 400);
     }
 
-    // Görseli uint8 array'e çevir
+    // Goruntuyu base64'e cevir
     const imageBuffer = await imageFile.arrayBuffer();
-    const imageArray = Array.from(new Uint8Array(imageBuffer));
+    const base64 = arrayBufferToBase64(imageBuffer);
+    const mimeType = imageFile.type || "image/jpeg";
+    const dataUrl = `data:${mimeType};base64,${base64}`;
 
-    // Cloudflare AI img2img endpoint'i
-    const model = "@cf/runwayml/stable-diffusion-v1-5-img2img";
-    const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/${model}`;
+    // Replicate flux-dev img2img
+    const model = "black-forest-labs/flux-dev";
+    const structuredPrompt = `Architectural renovation: ${command}. Maintain the exact same building structure, walls, roof, windows, and proportions. Only change materials, colors, and finishes. Photorealistic, high quality, detailed, natural lighting.`;
 
-    const aiResponse = await fetch(url, {
+    const res = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.CF_API_TOKEN}`,
-        "Content-Type": "application/json"
+        Authorization: `Token ${token}`,
+        "Content-Type": "application/json",
+        Prefer: "wait",
       },
       body: JSON.stringify({
-        prompt: prompt,
-        image: imageArray,
-        strength: clamp(strength, 0, 1),
-        num_steps: clamp(numSteps, 1, 20),
-        guidance: 7.5
-      })
+        input: {
+          prompt: structuredPrompt,
+          image: dataUrl,
+          strength: Math.max(0, Math.min(1, strength)),
+          num_outputs: 1,
+          aspect_ratio: "1:1",
+          output_format: "png",
+          guidance_scale: 5.0,
+        },
+      }),
     });
 
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      return jsonError(`Cloudflare AI hatası (${aiResponse.status}): ${errText}`, 502);
+    if (!res.ok) {
+      const text = await res.text();
+      return jsonError(`Replicate ${res.status}: ${text.slice(0, 200)}`, 502);
     }
 
-    // Model PNG binary döner → base64'e çevir → JSON olarak gönder
-    const outBuffer = await aiResponse.arrayBuffer();
-    const base64 = arrayBufferToBase64(outBuffer);
-    const dataUrl = `data:image/png;base64,${base64}`;
+    const prediction = await res.json();
 
-    return jsonSuccess({ success: true, resultUrl: dataUrl, model: "cf-stable-diffusion-img2img" });
+    if (prediction.status === "succeeded" && prediction.output) {
+      let url = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+      return jsonSuccess({ success: true, resultUrl: url, model });
+    }
+
+    // Async polling
+    const id = prediction.id;
+    if (id) {
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const poll = await fetch(`https://api.replicate.com/v1/predictions/${id}`, {
+          headers: { Authorization: `Token ${token}` },
+        });
+        if (!poll.ok) continue;
+        const d = await poll.json();
+        if (d.status === "succeeded") {
+          let url = Array.isArray(d.output) ? d.output[0] : d.output;
+          return jsonSuccess({ success: true, resultUrl: url, model });
+        }
+        if (d.status === "failed" || d.status === "canceled") {
+          return jsonError(`Prediction ${d.status}: ${d.error || ""}`, 500);
+        }
+      }
+    }
+
+    return jsonError("Timeout", 504);
   } catch (err) {
-    return jsonError(`Sunucu hatası: ${err.message}`, 500);
+    return jsonError(`Hata: ${err.message}`, 500);
   }
-}
-
-// OPTIONS — CORS preflight (gerekirse)
-export async function onRequestOptions() {
-  return new Response(null, {
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type"
-    }
-  });
-}
-
-function jsonSuccess(data) {
-  return new Response(JSON.stringify(data), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*"
-    }
-  });
-}
-
-function jsonError(message, status) {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*"
-    }
-  });
 }
 
 function arrayBufferToBase64(buffer) {
@@ -109,7 +101,32 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
-function clamp(v, min, max) {
-  if (isNaN(v)) return min;
-  return Math.max(min, Math.min(max, v));
+function jsonSuccess(data) {
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    },
+  });
+}
+
+function jsonError(message, status) {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    },
+  });
+}
+
+export async function onRequestOptions() {
+  return new Response(null, {
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
 }

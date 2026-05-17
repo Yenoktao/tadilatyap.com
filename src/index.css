@@ -33,12 +33,12 @@
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
     
-    --bg-primary: #F4F4F4;
-    --bg-dark: #111111;
-    --bg-concrete: #1A1A1A;
+    --bg-primary: #F3F4F6;
+    --bg-dark: #003D7C;
+    --bg-concrete: #00295A;
     --text-primary: #111111;
     --text-inverse: #FFFFFF;
-    --accent-blue: #74B9FF;
+    --accent-blue: #F36621;
   }
 
   body {
