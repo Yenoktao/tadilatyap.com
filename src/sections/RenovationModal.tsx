@@ -1,11 +1,40 @@
 import { useState, useCallback, useRef } from 'react';
 import {
   X, ImagePlus, Sparkles, ChevronRight, RefreshCw, Check,
-  AlertCircle, MapPin, Phone
+  AlertCircle, MapPin, Phone, Home, Paintbrush, Layers, Sofa, TreePine, Building
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 
 interface Props { isOpen: boolean; onClose: () => void; }
+
+// Seçim verileri
+const ALANLAR = [
+  { key: 'mutfak', label: 'Mutfak', icon: Home },
+  { key: 'banyo', label: 'Banyo', icon: Home },
+  { key: 'salon', label: 'Salon', icon: Sofa },
+  { key: 'discephe', label: 'Dış Cephe', icon: Building },
+  { key: 'bahce', label: 'Bahçe', icon: TreePine },
+  { key: 'diger', label: 'Diğer', icon: Home },
+];
+
+const ISLEMLER = [
+  { key: 'boya', label: 'Boya' },
+  { key: 'fayans', label: 'Fayans' },
+  { key: 'kaplama', label: 'Kaplama' },
+  { key: 'dolap', label: 'Dolap' },
+  { key: 'pencere', label: 'Pencere' },
+  { key: 'cati', label: 'Çatı' },
+  { key: 'diger', label: 'Diğer' },
+];
+
+const STILLER = [
+  { key: 'modern', label: 'Modern' },
+  { key: 'klasik', label: 'Klasik' },
+  { key: 'minimal', label: 'Minimal' },
+  { key: 'rustik', label: 'Rustik' },
+  { key: 'luks', label: 'Lüks' },
+  { key: 'ekonomik', label: 'Ekonomik' },
+];
 
 // Hatay ilçeleri ve mahalleleri
 const hatayIlceler: Record<string, string[]> = {
@@ -39,14 +68,37 @@ function calculatePrice(metrekare: number, ilce: string): string {
   return `₺${(min / 1000).toFixed(0)}.000 - ₺${(max / 1000).toFixed(0)}.000`;
 }
 
-// Gorseli sirastir + hem base64 onizleme hem Blob uret
+// Prompt oluşturucu - seçimlerden AI promptu üret
+function buildPrompt(userCommand: string, alan: string, islem: string, stil: string): string {
+  const parts: string[] = [];
+  if (alan && alan !== 'diger') parts.push(`${ALANLAR.find(a => a.key === alan)?.label || alan} tadilatı`);
+  if (islem && islem !== 'diger') parts.push(`${ISLEMLER.find(i => i.key === islem)?.label || islem} işlemi`);
+  if (stil && stil !== 'diger') parts.push(`${STILLER.find(s => s.key === stil)?.label || stil} tarzında`);
+  parts.push(`Kullanıcı isteği: ${userCommand}`);
+  return parts.join(', ');
+}
+
+// Telefon doğrulama - basit localStorage tabanlı
+function isPhoneUsed(phone: string): boolean {
+  try {
+    const used = JSON.parse(localStorage.getItem('tadilatyap_phones') || '[]');
+    return used.includes(phone.replace(/\s/g, ''));
+  } catch { return false; }
+}
+function markPhoneUsed(phone: string) {
+  try {
+    const used = JSON.parse(localStorage.getItem('tadilatyap_phones') || '[]');
+    used.push(phone.replace(/\s/g, ''));
+    localStorage.setItem('tadilatyap_phones', JSON.stringify(used));
+  } catch { /* ignore */ }
+}
+
 async function compressImage(file: File): Promise<{ dataUrl: string; blob: Blob }> {
   const blob = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 512, useWebWorker: true, fileType: 'image/jpeg', initialQuality: 0.7 });
   const dataUrl = await imageCompression.getDataUrlFromFile(blob);
   return { dataUrl, blob };
 }
 
-// FormData ile dosya gonder (binary, base64 degil)
 async function callRenovateAPI(imageBlob: Blob, command: string) {
   const form = new FormData();
   form.append('image', imageBlob, 'input.jpg');
@@ -65,8 +117,18 @@ async function callRenovateAPI(imageBlob: Blob, command: string) {
 }
 
 export default function RenovationModal({ isOpen, onClose }: Props) {
-  // Akış adımları: upload → command → analyzing → result
-  const [step, setStep] = useState<'upload' | 'command' | 'analyzing' | 'result'>('upload');
+  // Akış adımları: upload → selection → command → analyzing → result
+  const [step, setStep] = useState<'upload' | 'selection' | 'command' | 'analyzing' | 'result'>('upload');
+
+  // Seçim state'leri
+  const [selectedAlan, setSelectedAlan] = useState('');
+  const [selectedIslem, setSelectedIslem] = useState('');
+  const [selectedStil, setSelectedStil] = useState('');
+
+  // Telefon doğrulama
+  const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [phoneVerified, setPhoneVerified] = useState(false);
 
   const [photoPreview, setPhotoPreview] = useState('');
   const [imageFile, setImageFile] = useState<Blob | null>(null);
@@ -88,13 +150,29 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   const ilceRef = useRef<HTMLDivElement>(null);
   const mahalleRef = useRef<HTMLDivElement>(null);
 
+  // Telefon doğrula
+  const verifyPhone = () => {
+    const cleaned = phone.replace(/\s/g, '');
+    if (cleaned.length < 10) {
+      setPhoneError('Geçerli bir telefon numarası girin');
+      return;
+    }
+    if (isPhoneUsed(cleaned)) {
+      setPhoneError('Bu numara ile zaten tadilat oluşturdunuz. Yeni bir numara girin.');
+      return;
+    }
+    setPhoneError('');
+    setPhoneVerified(true);
+    markPhoneUsed(cleaned);
+  };
+
   const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) return;
     try {
       const { dataUrl, blob } = await compressImage(file);
       setPhotoPreview(dataUrl);
       setImageFile(blob);
-      setStep('command');
+      setStep('selection');
       setError('');
     } catch { setError('Fotoğraf okunamadı'); }
   }, []);
@@ -108,11 +186,14 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
     if (!imageFile || !command.trim()) return;
     setStep('analyzing'); setProgress(0); setError(''); setElapsedTime(0);
 
+    // Seçimlerden prompt oluştur
+    const fullCommand = buildPrompt(command.trim(), selectedAlan, selectedIslem, selectedStil);
+
     const timer = setInterval(() => setElapsedTime(t => t + 1), 1000);
     const progressInterval = setInterval(() => setProgress(p => Math.min(p + 3, 90)), 1000);
 
     try {
-      const result = await callRenovateAPI(imageFile, command);
+      const result = await callRenovateAPI(imageFile, fullCommand);
       clearInterval(progressInterval);
       if (result.success && result.resultUrl) {
         setGeneratedImage(result.resultUrl);
@@ -141,213 +222,318 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
 
   if (!isOpen) return null;
 
+  // === TELEFON DOĞRULAMA EKRANI ===
+  if (!phoneVerified) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-[#0a0a0a] flex items-center justify-center p-4">
+        <button onClick={onClose} className="fixed top-5 right-5 z-50 w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">
+          <X size={18} />
+        </button>
+        <div className="max-w-sm w-full bg-[#1a1a1a] border border-white/10 rounded-2xl p-8 text-center">
+          <Phone size={48} className="mx-auto text-white/40 mb-6" />
+          <h2 className="text-2xl font-bold text-white mb-2">Tadilata Başla</h2>
+          <p className="text-white/60 text-sm mb-6">Her telefon numarasına 1 tadilat hakkı veriyoruz. Geçerli telefon numaranızı girin.</p>
+          <input
+            type="tel"
+            placeholder="05XX XXX XX XX"
+            value={phone}
+            onChange={e => { setPhone(e.target.value); setPhoneError(''); }}
+            className="w-full px-4 py-3 bg-[#0a0a0a] border border-white/10 rounded-xl text-white placeholder-white/30 text-center text-lg tracking-wider focus:outline-none focus:border-white/30 mb-3"
+          />
+          {phoneError && <p className="text-red-400 text-sm mb-4">{phoneError}</p>}
+          <button
+            onClick={verifyPhone}
+            className="w-full py-3 bg-white text-[#0a0a0a] font-bold rounded-xl hover:bg-white/90 transition-colors"
+          >
+            Devam Et
+          </button>
+          <p className="text-white/30 text-xs mt-4">Bir telefon numarası ile sadece 1 kez tadilat oluşturabilirsiniz.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[100] bg-[#0a0a0a] overflow-y-auto p-4">
       <button onClick={onClose} className="fixed top-5 right-5 z-50 w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">
         <X size={18} />
       </button>
 
-      {/* İlerleme çubuğu */}
-      <div className="fixed top-0 left-0 w-full h-0.5 bg-white/5 z-40">
-        <div className="h-full bg-accent-blue transition-all" style={{
-          width: step === 'upload' ? '25%' : step === 'command' ? '50%' : step === 'analyzing' ? `${progress}%` : '100%'
-        }} />
-      </div>
+      <div className="max-w-lg mx-auto pt-12 pb-20">
 
-      <div className="min-h-screen flex items-center justify-center pt-10">
-        <div className="w-full max-w-lg mx-auto">
-
-          {/* ═══ ADIM 1: GÖRSEL YÜKLE ═══ */}
-          {step === 'upload' && (
-            <div className="text-center">
-              <div className="w-14 h-14 rounded-2xl bg-accent-blue/10 border border-accent-blue/20 flex items-center justify-center mx-auto mb-4">
-                <ImagePlus size={24} className="text-accent-blue" />
-              </div>
-              <h2 className="font-raleway font-bold text-white text-2xl mb-2">Mekanınızı Fotoğraflayın</h2>
-              <p className="font-raleway text-white/40 text-sm mb-8">Tadilat yapılacak alanın fotoğrafını yükleyin</p>
-
-              <div onDrop={onDrop} onDragOver={e => e.preventDefault()} onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-white/10 hover:border-accent-blue/40 rounded-2xl p-14 text-center cursor-pointer transition-all bg-white/[0.01]">
-                <input ref={fileInputRef} type="file" accept="image/*" onChange={onFileChange} className="hidden" />
-                <ImagePlus size={48} className="mx-auto mb-4 text-white/20" />
-                <p className="font-raleway text-white/60 text-sm mb-2">Sürükleyip bırakın veya tıklayın</p>
-                <p className="font-raleway text-white/25 text-xs">JPG, PNG</p>
-              </div>
+        {/* === 1. FOTOĞRAF YÜKLEME === */}
+        {step === 'upload' && (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-white mb-2">Fotoğraf Yükle</h2>
+              <p className="text-white/60 text-sm">Tadilat yapılacak alanın fotoğrafını yükleyin</p>
             </div>
-          )}
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDrop={onDrop}
+              onDragOver={e => e.preventDefault()}
+              className="aspect-square max-h-[60vh] rounded-2xl border-2 border-dashed border-white/10 bg-[#1a1a1a] flex flex-col items-center justify-center cursor-pointer hover:border-white/30 hover:bg-[#222] transition-all"
+            >
+              <ImagePlus size={48} className="text-white/30 mb-4" />
+              <p className="text-white/60 text-sm">Fotoğraf yüklemek için tıklayın veya sürükleyin</p>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
+            </div>
+          </div>
+        )}
 
-          {/* ═══ ADIM 2: KOMUT YAZ ═══ */}
-          {step === 'command' && (
+        {/* === 2. SEÇİM EKRANI (YENİ) === */}
+        {step === 'selection' && photoPreview && (
+          <div className="space-y-8">
+            <div className="text-center mb-4">
+              <h2 className="text-2xl font-bold text-white mb-2">Tadilat Detayları</h2>
+              <p className="text-white/60 text-sm">Seçimleriniz AI'ın daha doğru sonuç üretmesine yardımcı olur</p>
+            </div>
+
+            {/* Önizleme */}
+            <div className="rounded-xl overflow-hidden border border-white/10">
+              <img src={photoPreview} alt="Önizleme" className="w-full max-h-48 object-cover" />
+            </div>
+
+            {/* Alan Seçimi */}
             <div>
-              <div className="flex items-center gap-3 mb-6">
-                <button onClick={() => setStep('upload')} className="text-white/30 hover:text-white/60 text-xs font-raleway">
-                  <ChevronRight size={12} className="rotate-180 inline" /> Geri
-                </button>
-              </div>
-
-              {photoPreview && (
-                <div className="relative mb-6 rounded-xl overflow-hidden border border-white/10 max-w-sm mx-auto">
-                  <img src={photoPreview} alt="" className="w-full h-48 object-cover" />
-                </div>
-              )}
-
-              <h2 className="font-raleway font-bold text-white text-xl mb-4 text-center">Tadilat Talebinizi Yazın</h2>
-
-              <div className="mb-4">
-                <textarea
-                  value={command}
-                  onChange={e => setCommand(e.target.value)}
-                  placeholder="Örn: Kulübeyi tamamen ahşap kaplama yap, büyük cam ekle, içi modern olsun..."
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 font-raleway text-white text-sm placeholder-white/20 outline-none focus:border-accent-blue/50 transition-colors resize-none"
-                  rows={4}
-                />
-              </div>
-
-              <button onClick={() => command.trim() ? startAnalysis() : null}
-                className={`w-full py-4 rounded-xl font-raleway font-bold text-sm tracking-widest uppercase transition-all flex items-center justify-center gap-2 ${command.trim() ? 'bg-accent-blue text-bg-dark hover:bg-white' : 'bg-white/5 text-white/20 cursor-not-allowed'}`}>
-                <Sparkles size={16} /> YZ Tadilat Oluştur
-              </button>
-            </div>
-          )}
-
-          {/* ═══ ADIM 3: AI LOADING ═══ */}
-          {step === 'analyzing' && (
-            <div className="text-center py-12">
-              {photoPreview && (
-                <div className="relative mx-auto mb-8 rounded-xl overflow-hidden border border-white/10 max-w-md">
-                  <img src={photoPreview} alt="" className="w-full h-56 object-cover blur-xl opacity-40 animate-pulse" />
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-bg-dark/80 rounded-full border border-accent-blue/30">
-                    <span className="font-raleway text-accent-blue text-xs font-medium animate-pulse">YZ İşliyor...</span>
-                  </div>
-                </div>
-              )}
-
-              <h3 className="font-raleway font-bold text-white text-lg mb-2">Tadilat Tasarımı Oluşturuluyor</h3>
-              <p className="font-raleway text-white/30 text-xs mb-4">{formatTime(elapsedTime)} geçti • Tahmini: 30-60 sn</p>
-
-              <div className="max-w-xs mx-auto">
-                <div className="h-0.5 bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-accent-blue rounded-full transition-all" style={{ width: `${progress}%` }} />
-                </div>
-                <p className="font-raleway text-white/20 text-xs mt-2 text-right">%{progress}</p>
+              <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+                <Home size={16} className="text-white/40" /> Hangi Alan?
+              </h3>
+              <div className="grid grid-cols-3 gap-2">
+                {ALANLAR.map(a => {
+                  const Icon = a.icon;
+                  const isActive = selectedAlan === a.key;
+                  return (
+                    <button
+                      key={a.key}
+                      onClick={() => setSelectedAlan(isActive ? '' : a.key)}
+                      className={`py-3 px-2 rounded-xl text-sm font-medium border transition-all flex flex-col items-center gap-1 ${
+                        isActive ? 'bg-white text-[#0a0a0a] border-white' : 'bg-[#1a1a1a] text-white/70 border-white/10 hover:border-white/30'
+                      }`}
+                    >
+                      <Icon size={18} />
+                      {a.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          )}
 
-          {/* ═══ ADIM 4: SONUÇ ═══ */}
-          {step === 'result' && (
+            {/* İşlem Seçimi */}
             <div>
-              {/* HATA */}
-              {error && (
-                <div className="mb-6 flex items-center gap-2 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                  <AlertCircle size={14} className="text-red-400" />
-                  <p className="font-raleway text-red-300 text-xs">{error}</p>
-                  <button onClick={startAnalysis} className="ml-auto text-accent-blue text-xs font-raleway hover:underline">Tekrar Dene</button>
+              <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+                <Paintbrush size={16} className="text-white/40" /> Ne Yapılsın?
+              </h3>
+              <div className="grid grid-cols-4 gap-2">
+                {ISLEMLER.map(i => {
+                  const isActive = selectedIslem === i.key;
+                  return (
+                    <button
+                      key={i.key}
+                      onClick={() => setSelectedIslem(isActive ? '' : i.key)}
+                      className={`py-2.5 px-2 rounded-xl text-sm font-medium border transition-all ${
+                        isActive ? 'bg-white text-[#0a0a0a] border-white' : 'bg-[#1a1a1a] text-white/70 border-white/10 hover:border-white/30'
+                      }`}
+                    >
+                      {i.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Stil Seçimi */}
+            <div>
+              <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+                <Layers size={16} className="text-white/40" /> Hangi Stil?
+              </h3>
+              <div className="grid grid-cols-3 gap-2">
+                {STILLER.map(s => {
+                  const isActive = selectedStil === s.key;
+                  return (
+                    <button
+                      key={s.key}
+                      onClick={() => setSelectedStil(isActive ? '' : s.key)}
+                      className={`py-2.5 px-2 rounded-xl text-sm font-medium border transition-all ${
+                        isActive ? 'bg-white text-[#0a0a0a] border-white' : 'bg-[#1a1a1a] text-white/70 border-white/10 hover:border-white/30'
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Prompt önizleme */}
+            {(selectedAlan || selectedIslem || selectedStil) && (
+              <div className="bg-[#1a1a1a] border border-white/10 rounded-xl p-4">
+                <p className="text-white/40 text-xs mb-1">AI'ın göreceği komut:</p>
+                <p className="text-white/80 text-sm font-medium">
+                  {buildPrompt('...', selectedAlan, selectedIslem, selectedStil).replace(', Kullanıcı isteği: ...', '')}
+                </p>
+              </div>
+            )}
+
+            <button
+              onClick={() => setStep('command')}
+              className="w-full py-4 bg-white text-[#0a0a0a] font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-white/90 transition-colors"
+            >
+              Devam Et <ChevronRight size={18} />
+            </button>
+          </div>
+        )}
+
+        {/* === 3. KOMUT YAZMA === */}
+        {step === 'command' && (
+          <div className="space-y-6">
+            <div className="text-center mb-4">
+              <h2 className="text-2xl font-bold text-white mb-2">Tadilat Komutunuz</h2>
+              <p className="text-white/60 text-sm">Ne istediğinizi detaylı yazın</p>
+            </div>
+
+            <div className="rounded-xl overflow-hidden border border-white/10 mb-4">
+              <img src={photoPreview} alt="Önizleme" className="w-full max-h-32 object-cover" />
+            </div>
+
+            {/* Seçim özet */}
+            {(selectedAlan || selectedIslem || selectedStil) && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {selectedAlan && <span className="px-3 py-1 bg-white/10 rounded-full text-white/70 text-xs">{ALANLAR.find(a => a.key === selectedAlan)?.label}</span>}
+                {selectedIslem && <span className="px-3 py-1 bg-white/10 rounded-full text-white/70 text-xs">{ISLEMLER.find(i => i.key === selectedIslem)?.label}</span>}
+                {selectedStil && <span className="px-3 py-1 bg-white/10 rounded-full text-white/70 text-xs">{STILLER.find(s => s.key === selectedStil)?.label}</span>}
+              </div>
+            )}
+
+            <textarea
+              value={command}
+              onChange={e => setCommand(e.target.value)}
+              placeholder="Örn: Duvarları kırmızı boya, yerleri parke yap, büyük cam ekle..."
+              className="w-full h-40 p-5 bg-[#1a1a1a] border border-white/10 rounded-2xl text-white placeholder-white/30 focus:outline-none focus:border-white/30 resize-none text-lg"
+            />
+
+            <button
+              onClick={startAnalysis}
+              disabled={!command.trim()}
+              className="w-full py-4 bg-white text-[#0a0a0a] font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-white/90 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Sparkles size={18} /> YZ Tadilat Oluştur
+            </button>
+            <button onClick={() => setStep('selection')} className="w-full py-3 text-white/40 text-sm hover:text-white transition-colors">
+              ← Geri Dön
+            </button>
+          </div>
+        )}
+
+        {/* === 4. ANALYZING === */}
+        {step === 'analyzing' && (
+          <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8">
+            <div className="w-20 h-20 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+            <div className="text-center space-y-2">
+              <h3 className="text-xl font-bold text-white">AI Analiz Ediyor</h3>
+              <p className="text-white/50 text-sm">Yapay zeka fotoğrafınızı ve komutunuzu işliyor...</p>
+              <p className="text-white/30 text-xs font-mono">{formatTime(elapsedTime)} • %{progress}</p>
+            </div>
+            <div className="w-full max-w-xs h-1 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-white transition-all duration-1000 rounded-full" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+        )}
+
+        {/* === 5. SONUÇ === */}
+        {step === 'result' && (
+          <div className="space-y-6">
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
+                <AlertCircle size={20} className="text-red-400 flex-shrink-0 mt-0.5" />
+                <div><p className="text-red-400 font-medium">{error}</p>
+                  <button onClick={() => setStep('command')} className="text-white/50 text-sm mt-2 hover:text-white">← Tekrar Dene</button>
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* ÖNCESİ/SONRASI SLIDER */}
-              {generatedImage && (
-                <>
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="px-3 py-1 bg-bg-dark/80 rounded-full font-raleway text-white/60 text-xs">Öncesi</span>
-                    <div className="flex-1" />
-                    <span className="px-3 py-1 bg-accent-blue/90 rounded-full font-raleway text-bg-dark text-xs font-semibold">YZ Sonrası</span>
+            {generatedImage && (
+              <>
+                <div className="text-center mb-4">
+                  <h2 className="text-2xl font-bold text-white mb-1">Tadilat Önizlemesi</h2>
+                  <p className="text-white/60 text-sm">Yapay zeka tarafından oluşturuldu</p>
+                </div>
+
+                {/* Before / After Slider */}
+                <div className="relative rounded-2xl overflow-hidden border border-white/10 aspect-square"
+                  onMouseMove={e => { const r = e.currentTarget.getBoundingClientRect(); setBeforeAfterPos(((e.clientX - r.left) / r.width) * 100); }}
+                  onTouchMove={e => { const r = e.currentTarget.getBoundingClientRect(); const t = e.touches[0]; setBeforeAfterPos(((t.clientX - r.left) / r.width) * 100); }}
+                >
+                  <img src={generatedImage} alt="Sonrası" className="absolute inset-0 w-full h-full object-cover" />
+                  <div className="absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 ${100 - beforeAfterPos}% 0 0)` }}>
+                    <img src={photoPreview} alt="Öncesi" className="absolute inset-0 w-full h-full object-cover" />
                   </div>
-
-                  <div className="relative mb-6 rounded-xl overflow-hidden border border-white/10 select-none">
-                    <div className="relative h-64 md:h-80">
-                      <img src={generatedImage} alt="YZ Sonrası" className="absolute inset-0 w-full h-full object-cover" onError={() => setError('Görsel yüklenemedi')} />
-                      {photoPreview && (
-                        <>
-                          <div className="absolute inset-0 overflow-hidden" style={{ width: `${beforeAfterPos}%` }}>
-                            <img src={photoPreview} alt="Öncesi" className="absolute inset-0 w-full h-full object-cover" style={{ width: `${100 / (beforeAfterPos / 100)}%` }} />
-                          </div>
-                          <div className="absolute top-0 bottom-0 w-0.5 bg-white cursor-ew-resize z-10" style={{ left: `${beforeAfterPos}%` }}>
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center">
-                              <div className="flex gap-0.5"><ChevronRight size={10} className="text-bg-dark rotate-180" /><ChevronRight size={10} className="text-bg-dark" /></div>
-                            </div>
-                          </div>
-                          <input type="range" min={0} max={100} value={beforeAfterPos} onChange={e => setBeforeAfterPos(Number(e.target.value))} className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-20" />
-                        </>
-                      )}
+                  <div className="absolute top-0 bottom-0 w-0.5 bg-white cursor-ew-resize" style={{ left: `${beforeAfterPos}%` }}>
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg">
+                      <div className="flex gap-0.5"><div className="w-0.5 h-3 bg-[#0a0a0a] rounded-full" /><div className="w-0.5 h-3 bg-[#0a0a0a] rounded-full" /></div>
                     </div>
                   </div>
+                  <span className="absolute top-4 left-4 px-2 py-1 bg-black/60 rounded text-white text-xs font-medium">ÖNCESİ</span>
+                  <span className="absolute top-4 right-4 px-2 py-1 bg-white/90 rounded text-[#0a0a0a] text-xs font-medium">SONRASI</span>
+                </div>
 
-                  {/* İLÇE/MAHALLE SEÇİMİ (FİYAT İÇİN) */}
-                  <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 mb-4">
-                    <h3 className="font-raleway font-semibold text-white text-sm mb-4">Proje Lokasyonu (Fiyat Tahmini İçin)</h3>
-
-                    <div className="mb-3">
-                      <label className="font-raleway text-xs text-white/40 block mb-1">İl</label>
-                      <input type="text" value="Hatay" disabled className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2.5 font-raleway text-white/50 text-sm cursor-not-allowed" />
-                    </div>
-
-                    <div className="mb-3" ref={ilceRef}>
-                      <label className="font-raleway text-xs text-white/40 block mb-1">İlçe *</label>
-                      <button onClick={() => setShowIlceDropdown(!showIlceDropdown)} className={`w-full text-left bg-white/5 border rounded-lg px-3 py-2.5 font-raleway text-sm transition-colors ${ilce ? 'border-accent-blue/30 text-white' : 'border-white/10 text-white/30'}`}>
-                        {ilce || 'İlçe seçin...'}
+                {/* Lokasyon & Fiyat */}
+                <div className="space-y-4 bg-[#1a1a1a] border border-white/10 rounded-2xl p-5">
+                  <h3 className="text-white font-medium flex items-center gap-2"><MapPin size={16} className="text-white/40" /> Proje Lokasyonu</h3>
+                  <div className="grid grid-cols-2 gap-3 relative">
+                    <div ref={ilceRef}>
+                      <label className="text-white/40 text-xs mb-1 block">İlçe</label>
+                      <button onClick={() => setShowIlceDropdown(!showIlceDropdown)} className="w-full p-3 bg-[#0a0a0a] border border-white/10 rounded-xl text-left text-white flex items-center justify-between">
+                        {ilce || 'İlçe Seçin'} <ChevronRight size={14} className="text-white/30" />
                       </button>
                       {showIlceDropdown && (
-                        <div className="mt-1 w-full max-h-40 overflow-y-auto bg-[#111] border border-white/10 rounded-lg shadow-2xl custom-scrollbar z-30 relative">
+                        <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto bg-[#1a1a1a] border border-white/10 rounded-xl custom-scrollbar" style={{ width: ilceRef.current?.offsetWidth }}>
                           {Object.keys(hatayIlceler).map(i => (
-                            <button key={i} onClick={() => { setIlce(i); setMahalle(''); setShowIlceDropdown(false); }} className={`w-full text-left px-3 py-2 font-raleway text-sm transition-colors ${ilce === i ? 'text-accent-blue bg-accent-blue/10 font-semibold' : 'text-white/60 hover:text-white hover:bg-white/5'}`}>{i}</button>
+                            <button key={i} onClick={() => { setIlce(i); setMahalle(''); setShowIlceDropdown(false); }} className="w-full px-4 py-2.5 text-left text-white/70 hover:bg-white/5 text-sm">{i}</button>
                           ))}
                         </div>
                       )}
                     </div>
-
-                    <div className="mb-3" ref={mahalleRef}>
-                      <label className="font-raleway text-xs text-white/40 block mb-1">Mahalle *</label>
-                      <button onClick={() => ilce ? setShowMahalleDropdown(!showMahalleDropdown) : null} className={`w-full text-left bg-white/5 border rounded-lg px-3 py-2.5 font-raleway text-sm transition-colors ${!ilce ? 'border-white/5 text-white/20 cursor-not-allowed' : mahalle ? 'border-accent-blue/30 text-white' : 'border-white/10 text-white/30'}`}>
-                        {mahalle || (ilce ? 'Mahalle seçin...' : 'Önce ilçe seçin')}
+                    <div ref={mahalleRef}>
+                      <label className="text-white/40 text-xs mb-1 block">Mahalle</label>
+                      <button onClick={() => ilce && setShowMahalleDropdown(!showMahalleDropdown)} className={`w-full p-3 bg-[#0a0a0a] border border-white/10 rounded-xl text-left flex items-center justify-between ${ilce ? 'text-white' : 'text-white/30'}`}>
+                        {mahalle || 'Mahalle'} <ChevronRight size={14} className="text-white/30" />
                       </button>
-                      {showMahalleDropdown && (
-                        <div className="mt-1 w-full max-h-40 overflow-y-auto bg-[#111] border border-white/10 rounded-lg shadow-2xl custom-scrollbar z-30 relative">
-                          {(hatayIlceler[ilce] || []).map(m => (
-                            <button key={m} onClick={() => { setMahalle(m); setShowMahalleDropdown(false); }} className={`w-full text-left px-3 py-2 font-raleway text-sm transition-colors ${mahalle === m ? 'text-accent-blue bg-accent-blue/10 font-semibold' : 'text-white/60 hover:text-white hover:bg-white/5'}`}>{m}</button>
+                      {showMahalleDropdown && ilce && (
+                        <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto bg-[#1a1a1a] border border-white/10 rounded-xl custom-scrollbar" style={{ width: mahalleRef.current?.offsetWidth }}>
+                          {hatayIlceler[ilce].map(m => (
+                            <button key={m} onClick={() => { setMahalle(m); setShowMahalleDropdown(false); }} className="w-full px-4 py-2.5 text-left text-white/70 hover:bg-white/5 text-sm">{m}</button>
                           ))}
                         </div>
                       )}
                     </div>
-
-                    <div className="mb-4">
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="font-raleway text-xs text-white/40">Metrekare</label>
-                        <span className="font-raleway font-bold text-accent-blue text-sm">{metrekare}m²</span>
-                      </div>
-                      <input type="range" min={10} max={200} step={5} value={metrekare} onChange={e => setMetrekare(Number(e.target.value))} className="w-full h-1 bg-white/10 rounded-full accent-accent-blue" />
-                    </div>
-
-                    {/* FİYAT */}
-                    {ilce && mahalle && (
-                      <div className="bg-white/[0.03] border border-white/10 rounded-lg p-4 text-center mb-4">
-                        <p className="font-raleway text-xs text-white/40 uppercase tracking-widest mb-1">Tahmini Fiyat (Hatay / {ilce})</p>
-                        <p className="font-raleway font-black text-white text-2xl">{priceRange}</p>
-                        <p className="font-raleway text-white/25 text-xs mt-1">{metrekare}m² bazlı hesaplanmıştır</p>
-                      </div>
-                    )}
-
-                    {/* WHATSAPP CTA */}
-                    {ilce && mahalle && (
-                      <a href={getWhatsAppLink()} target="_blank" rel="noopener noreferrer"
-                        className="block w-full py-4 bg-[#25D366] rounded-lg font-raleway font-bold text-sm tracking-widest uppercase text-white hover:bg-[#22bf5b] transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(37,211,102,0.15)]">
-                        <Phone size={16} /> Keşif Randevusu Al
-                      </a>
-                    )}
                   </div>
+                  <div>
+                    <label className="text-white/40 text-xs mb-1 block">m²: {metrekare}</label>
+                    <input type="range" min="10" max="500" value={metrekare} onChange={e => setMetrekare(parseInt(e.target.value))} className="w-full accent-white" />
+                  </div>
+                  {priceRange && (
+                    <div className="pt-3 border-t border-white/10">
+                      <p className="text-white/40 text-xs">Tahmini Maliyet Aralığı</p>
+                      <p className="text-xl font-bold text-white">{priceRange}</p>
+                    </div>
+                  )}
+                </div>
 
-                  {/* YENİDEN OLUŞTUR */}
-                  <button onClick={() => { setGeneratedImage(''); setStep('command'); setError(''); }}
-                    className="w-full py-3 rounded-lg font-raleway font-bold text-xs tracking-widest uppercase bg-white/5 border border-white/10 text-white hover:border-accent-blue hover:text-accent-blue transition-all flex items-center justify-center gap-2">
-                    <RefreshCw size={14} /> Yeniden Oluştur
+                {/* WhatsApp CTA */}
+                <div className="space-y-3">
+                  <p className="text-white/40 text-xs text-center">Bu fikir mi? Hemen keşif randevusu alın.</p>
+                  <a href={getWhatsAppLink()} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-3 w-full py-4 bg-green-600 text-white font-bold rounded-xl hover:bg-green-500 transition-colors">
+                    <Phone size={20} /> WhatsApp'tan Keşif Randevusu Al
+                  </a>
+                  <button onClick={() => setStep('command')} className="flex items-center justify-center gap-2 w-full py-3 border border-white/10 text-white/60 rounded-xl hover:border-white/30 hover:text-white transition-all">
+                    <RefreshCw size={16} /> Yeniden Dene
                   </button>
-                </>
-              )}
-            </div>
-          )}
-
-        </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
