@@ -11,6 +11,7 @@ import Sustainability from './sections/Sustainability';
 import Contact from './sections/Contact';
 import Footer from './sections/Footer';
 import RenovationModal from './sections/RenovationModal';
+import PartnerSection from './sections/PartnerSection';
 
 // gsap.registerPlugin(ScrollTrigger); // DEBUG disabled
 
@@ -26,6 +27,7 @@ function App() {
       <Services />
       <AIHizmet />
       <Showcase />
+      <PartnerSection />
       <Sustainability />
       <Contact />
       <Footer />
