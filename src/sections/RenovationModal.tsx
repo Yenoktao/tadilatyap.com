@@ -1,0 +1,504 @@
+import { useState, useCallback, useRef } from 'react';
+import {
+  X, ImagePlus, Sparkles, ChevronRight, RefreshCw, Check,
+  AlertCircle, MapPin, Phone, Home, Paintbrush, Sofa, TreePine, Building
+} from 'lucide-react';
+import imageCompression from 'browser-image-compression';
+
+interface Props { isOpen: boolean; onClose: () => void; }
+
+// Seçim verileri
+const ALANLAR = [
+  { key: 'mutfak', label: 'Mutfak', icon: Home },
+  { key: 'banyo', label: 'Banyo', icon: Home },
+  { key: 'salon', label: 'Oda', icon: Sofa },
+  { key: 'discephe', label: 'Dış Cephe', icon: Building },
+  { key: 'bahce', label: 'Bahçe', icon: TreePine },
+  { key: 'diger', label: 'Diğer', icon: Home },
+];
+
+const ISLEMLER = [
+  { key: 'boya', label: 'Boya' },
+  { key: 'fayans', label: 'Fayans' },
+  { key: 'kaplama', label: 'Kaplama' },
+  { key: 'dolap', label: 'Dolap' },
+  { key: 'pencere', label: 'Pencere' },
+  { key: 'cati', label: 'Çatı' },
+  { key: 'diger', label: 'Diğer' },
+];
+
+// Hatay ilçeleri ve mahalleleri
+const hatayIlceler: Record<string, string[]> = {
+  'Antakya': ['Çekmece', 'Sarılar', 'Üçgüllük', 'Aksaray', 'Atatürk', 'Cumhuriyet', 'Demirköprü', 'Esentepe', 'Gazi', 'Harbiye', 'Hürriyet', 'İstiklal', 'Karaali', 'Küçükdalyan', 'Sakarya', 'Serinyol', 'Subaşı'],
+  'Defne': ['Armutlu', 'Bahçeköy', 'Balıklıdere', 'Çekmece', 'Dursunlu', 'Gümüşgöze', 'Harbiye', 'Karaali', 'Subaşı', 'Yenişehir'],
+  'İskenderun': ['Akarca', 'Barbaros', 'Cumhuriyet', 'Denizciler', 'Gülcihan', 'Gültepe', 'Hürriyet', 'Kurtuluş', 'Merkez', 'Süleymaniye', 'Yenişehir'],
+  'Kırıkhan': ['Akasya', 'Akçalı', 'Bahçelievler', 'Cumhuriyet', 'Gazi', 'Hürriyet', 'Kurtuluş', 'Namık Kemal', 'Özgürlüğü'],
+  'Arsuz': ['Arpaderesi', 'Bakırlı', 'Conk', 'Denizci', 'Hacıahmet', 'Işıklı', 'Karaağaç', 'Madenli', 'Sarımandıra', 'Taşkapı'],
+  'Hassa': ['Akbez', 'Aktepe', 'Ardıçlı', 'Bademli', 'Çamlıtepe', 'Çevre', 'Gülpınar', 'Hürriyet', 'Kayaalan', 'Yeşilova'],
+  'Dörtyol': ['Alparslan', 'Bahçelievler', 'Cumhuriyet', 'Gazi', 'Hürriyet', 'Kuzuculu', 'Namık Kemal', 'Sahil', 'Serinyol'],
+  'Samandağ': ['Aknehir', 'Ataköy', 'Cumhuriyet', 'Çamlıyayla', 'Değirmen', 'Hürriyet', 'Kapısuyu', 'Sahil', 'Tabiat', 'Yaylıca'],
+  'Altınözü': ['Akamber', 'Belen', 'Cumhuriyet', 'Demirköprü', 'Hacıpaşa', 'Kozkalesi', 'Sarımazı', 'Yenişehir'],
+  'Belen': ['Akbaba', 'Belen', 'Çamlıbel', 'Fatih', 'Güzelyayla', 'Kozluca', 'Meydan', 'Narlıca', 'Yeni'],
+  'Erzin': ['Aşkale', 'Bahçelievler', 'Cumhuriyet', 'Gazi', 'Hürriyet', 'Kumbaşı', 'Sağlık', 'Yeni'],
+  'Kumlu': ['Akçalı', 'Atatürk', 'Bahçelievler', 'Cumhuriyet', 'Gazi', 'Hürriyet', 'Namık Kemal', 'Yenişehir'],
+  'Payas': ['Akçalı', 'Cumhuriyet', 'Fatih', 'Hürriyet', 'Kozlu', 'Namık Kemal', 'Sahil', 'Yenimahalle'],
+  'Yayladağı': ['Arpalı', 'Bademli', 'Bozca', 'Çemenli', 'Karaca', 'Nardüzü', 'Serinyol', 'Yenice', 'Yeşilova'],
+};
+
+function calculatePrice(metrekare: number, ilce: string): string {
+  const mul: Record<string, number> = {
+    'Antakya': 1.0, 'Defne': 1.05, 'İskenderun': 1.1, 'Kırıkhan': 0.8,
+    'Arsuz': 0.95, 'Hassa': 0.75, 'Altınözü': 0.7, 'Dörtyol': 0.85,
+    'Samandağ': 0.9, 'Belen': 0.78, 'Erzin': 0.82, 'Kumlu': 0.72,
+    'Payas': 0.88, 'Yayladağı': 0.65,
+  };
+  const base = metrekare * 2200;
+  const m = mul[ilce] || 1.0;
+  const min = Math.round(base * m * 0.85);
+  const max = Math.round(base * m * 1.15);
+  return `₺${(min / 1000).toFixed(0)}.000 - ₺${(max / 1000).toFixed(0)}.000`;
+}
+
+// Prompt oluşturucu - seçimlerden AI promptu üret
+function buildPrompt(userCommand: string, alan: string, islem: string): string {
+  const parts: string[] = [];
+  if (alan && alan !== 'diger') parts.push(`${ALANLAR.find(a => a.key === alan)?.label || alan} tadilatı`);
+  if (islem && islem !== 'diger') parts.push(`${ISLEMLER.find(i => i.key === islem)?.label || islem} işlemi`);
+  parts.push(`Kullanıcı isteği: ${userCommand}`);
+  return parts.join(', ');
+}
+
+// Telefon doğrulama - basit localStorage tabanlı
+function isPhoneUsed(phone: string): boolean {
+  try {
+    const used = JSON.parse(localStorage.getItem('tadilatyap_phones') || '[]');
+    return used.includes(phone.replace(/\s/g, ''));
+  } catch { return false; }
+}
+function markPhoneUsed(phone: string) {
+  try {
+    const used = JSON.parse(localStorage.getItem('tadilatyap_phones') || '[]');
+    used.push(phone.replace(/\s/g, ''));
+    localStorage.setItem('tadilatyap_phones', JSON.stringify(used));
+  } catch { /* ignore */ }
+}
+
+async function compressImage(file: File): Promise<{ dataUrl: string; blob: Blob }> {
+  const blob = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 512, useWebWorker: true, fileType: 'image/jpeg', initialQuality: 0.7 });
+  const dataUrl = await imageCompression.getDataUrlFromFile(blob);
+  return { dataUrl, blob };
+}
+
+async function callRenovateAPI(imageBlob: Blob, command: string) {
+  const form = new FormData();
+  form.append('image', imageBlob, 'input.jpg');
+  form.append('command', command);
+  form.append('strength', '0.75');
+
+  const res = await fetch('/api/renovate', {
+    method: 'POST',
+    body: form,
+  });
+  const text = await res.text();
+  if (!text) throw new Error('Empty response');
+  const data = JSON.parse(text);
+  if (!data.success) throw new Error(data.error || 'AI failed');
+  return data;
+}
+
+export default function RenovationModal({ isOpen, onClose }: Props) {
+  // Akış adımları: upload → selection → command → analyzing → result
+  const [step, setStep] = useState<'upload' | 'selection' | 'command' | 'analyzing' | 'result'>('upload');
+
+  // Seçim state'leri
+  const [selectedAlan, setSelectedAlan] = useState('');
+  const [selectedIslem, setSelectedIslem] = useState('');
+  // Telefon doğrulama
+  const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [phoneVerified, setPhoneVerified] = useState(false);
+
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [imageFile, setImageFile] = useState<Blob | null>(null);
+  const [command, setCommand] = useState('');
+  const [generatedImage, setGeneratedImage] = useState('');
+  const [beforeAfterPos, setBeforeAfterPos] = useState(50);
+  const [progress, setProgress] = useState(0);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [error, setError] = useState('');
+
+  // İlçe/mahalle (sonuç ekranında)
+  const [ilce, setIlce] = useState('');
+  const [mahalle, setMahalle] = useState('');
+  const [metrekare, setMetrekare] = useState(50);
+  const [showIlceDropdown, setShowIlceDropdown] = useState(false);
+  const [showMahalleDropdown, setShowMahalleDropdown] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const ilceRef = useRef<HTMLDivElement>(null);
+  const mahalleRef = useRef<HTMLDivElement>(null);
+
+  // Telefon doğrula
+  const verifyPhone = () => {
+    const cleaned = phone.replace(/\s/g, '');
+    if (cleaned.length < 10) {
+      setPhoneError('Geçerli bir telefon numarası girin');
+      return;
+    }
+    if (isPhoneUsed(cleaned)) {
+      setPhoneError('Bu numara ile zaten tadilat oluşturdunuz. Yeni bir numara girin.');
+      return;
+    }
+    setPhoneError('');
+    setPhoneVerified(true);
+    markPhoneUsed(cleaned);
+  };
+
+  const handleFile = useCallback(async (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    try {
+      const { dataUrl, blob } = await compressImage(file);
+      setPhotoPreview(dataUrl);
+      setImageFile(blob);
+      setStep('selection');
+      setError('');
+    } catch { setError('Fotoğraf okunamadı'); }
+  }, []);
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; if (f) handleFile(f);
+  };
+  const onDrop = (e: React.DragEvent) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); };
+
+  const startAnalysis = async () => {
+    if (!imageFile || !command.trim()) return;
+    setStep('analyzing'); setProgress(0); setError(''); setElapsedTime(0);
+
+    // Seçimlerden prompt oluştur
+    const fullCommand = buildPrompt(command.trim(), selectedAlan, selectedIslem);
+
+    const timer = setInterval(() => setElapsedTime(t => t + 1), 1000);
+    const progressInterval = setInterval(() => setProgress(p => Math.min(p + 3, 90)), 1000);
+
+    try {
+      const result = await callRenovateAPI(imageFile, fullCommand);
+      clearInterval(progressInterval);
+      if (result.success && result.resultUrl) {
+        setGeneratedImage(result.resultUrl);
+      } else { setError('AI sonuç üretemedi'); }
+      setProgress(100);
+      setStep('result');
+    } catch (err: any) {
+      clearInterval(progressInterval);
+      setError('AI hatası: ' + (err.message || 'Tekrar dene'));
+      setProgress(100);
+      setStep('result');
+    } finally {
+      clearInterval(timer);
+    }
+  };
+
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+
+  const getWhatsAppLink = () => {
+    const code = Math.floor(100 + Math.random() * 900);
+    const msg = `Merhaba, Hatay/${ilce}/${mahalle} projem için #TY-${code}-INDRM kodlu açılış indirimimle keşif randevusu istiyorum. Talebim: ${command}`;
+    return `https://wa.me/905425062816?text=${encodeURIComponent(msg)}`;
+  };
+
+  const priceRange = ilce ? calculatePrice(metrekare, ilce) : '';
+
+  if (!isOpen) return null;
+
+  // === TELEFON DOĞRULAMA EKRANI ===
+  if (!phoneVerified) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-[#0a0a0a] flex items-center justify-center p-4">
+        <button onClick={onClose} className="fixed top-5 right-5 z-50 w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">
+          <X size={18} />
+        </button>
+        <div className="max-w-sm w-full bg-[#1a1a1a] border border-white/10 rounded-2xl p-8 text-center">
+          <Phone size={48} className="mx-auto text-white/40 mb-6" />
+          <h2 className="text-2xl font-bold text-white mb-2">Tadilata Başla</h2>
+          <p className="text-white/60 text-sm mb-6">Her telefon numarasına 1 tadilat hakkı veriyoruz. Geçerli telefon numaranızı girin.</p>
+          <input
+            type="tel"
+            placeholder="05XX XXX XX XX"
+            value={phone}
+            onChange={e => { setPhone(e.target.value); setPhoneError(''); }}
+            className="w-full px-4 py-3 bg-[#0a0a0a] border border-white/10 rounded-xl text-white placeholder-white/30 text-center text-lg tracking-wider focus:outline-none focus:border-white/30 mb-3"
+          />
+          {phoneError && <p className="text-red-400 text-sm mb-4">{phoneError}</p>}
+          <button
+            onClick={verifyPhone}
+            className="w-full py-3 bg-white text-[#0a0a0a] font-bold rounded-xl hover:bg-white/90 transition-colors"
+          >
+            Devam Et
+          </button>
+          <p className="text-white/30 text-xs mt-4">Bir telefon numarası ile sadece 1 kez tadilat oluşturabilirsiniz.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-[#0a0a0a] overflow-y-auto p-4">
+      <button onClick={onClose} className="fixed top-5 right-5 z-50 w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">
+        <X size={18} />
+      </button>
+
+      <div className="max-w-lg mx-auto pt-12 pb-20">
+
+        {/* === 1. FOTOĞRAF YÜKLEME === */}
+        {step === 'upload' && (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-white mb-2">Fotoğraf Yükle</h2>
+              <p className="text-white/60 text-sm">Tadilat yapılacak alanın fotoğrafını yükleyin</p>
+            </div>
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDrop={onDrop}
+              onDragOver={e => e.preventDefault()}
+              className="aspect-square max-h-[60vh] rounded-2xl border-2 border-dashed border-white/10 bg-[#1a1a1a] flex flex-col items-center justify-center cursor-pointer hover:border-white/30 hover:bg-[#222] transition-all"
+            >
+              <ImagePlus size={48} className="text-white/30 mb-4" />
+              <p className="text-white/60 text-sm">Fotoğraf yüklemek için tıklayın veya sürükleyin</p>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
+            </div>
+          </div>
+        )}
+
+        {/* === 2. SEÇİM EKRANI (YENİ) === */}
+        {step === 'selection' && photoPreview && (
+          <div className="space-y-8">
+            <div className="text-center mb-4">
+              <h2 className="text-2xl font-bold text-white mb-2">Tadilat Detayları</h2>
+              <p className="text-white/60 text-sm">Seçimleriniz AI'ın daha doğru sonuç üretmesine yardımcı olur</p>
+            </div>
+
+            {/* Önizleme */}
+            <div className="rounded-xl overflow-hidden border border-white/10">
+              <img src={photoPreview} alt="Önizleme" className="w-full max-h-48 object-cover" />
+            </div>
+
+            {/* Alan Seçimi */}
+            <div>
+              <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+                <Home size={16} className="text-white/40" /> Hangi Alan?
+              </h3>
+              <div className="grid grid-cols-3 gap-2">
+                {ALANLAR.map(a => {
+                  const Icon = a.icon;
+                  const isActive = selectedAlan === a.key;
+                  return (
+                    <button
+                      key={a.key}
+                      onClick={() => setSelectedAlan(isActive ? '' : a.key)}
+                      className={`py-3 px-2 rounded-xl text-sm font-medium border transition-all flex flex-col items-center gap-1 ${
+                        isActive ? 'bg-white text-[#0a0a0a] border-white' : 'bg-[#1a1a1a] text-white/70 border-white/10 hover:border-white/30'
+                      }`}
+                    >
+                      <Icon size={18} />
+                      {a.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* İşlem Seçimi */}
+            <div>
+              <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+                <Paintbrush size={16} className="text-white/40" /> Ne Yapılsın?
+              </h3>
+              <div className="grid grid-cols-4 gap-2">
+                {ISLEMLER.map(i => {
+                  const isActive = selectedIslem === i.key;
+                  return (
+                    <button
+                      key={i.key}
+                      onClick={() => setSelectedIslem(isActive ? '' : i.key)}
+                      className={`py-2.5 px-2 rounded-xl text-sm font-medium border transition-all ${
+                        isActive ? 'bg-white text-[#0a0a0a] border-white' : 'bg-[#1a1a1a] text-white/70 border-white/10 hover:border-white/30'
+                      }`}
+                    >
+                      {i.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Prompt önizleme */}
+            {(selectedAlan || selectedIslem) && (
+              <div className="bg-[#1a1a1a] border border-white/10 rounded-xl p-4">
+                <p className="text-white/40 text-xs mb-1">AI'ın göreceği komut:</p>
+                <p className="text-white/80 text-sm font-medium">
+                  {buildPrompt('...', selectedAlan, selectedIslem).replace(', Kullanıcı isteği: ...', '')}
+                </p>
+              </div>
+            )}
+
+            <button
+              onClick={() => setStep('command')}
+              className="w-full py-4 bg-white text-[#0a0a0a] font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-white/90 transition-colors"
+            >
+              Devam Et <ChevronRight size={18} />
+            </button>
+          </div>
+        )}
+
+        {/* === 3. KOMUT YAZMA === */}
+        {step === 'command' && (
+          <div className="space-y-6">
+            <div className="text-center mb-4">
+              <h2 className="text-2xl font-bold text-white mb-2">Tadilat Komutunuz</h2>
+              <p className="text-white/60 text-sm">Ne istediğinizi detaylı yazın</p>
+            </div>
+
+            <div className="rounded-xl overflow-hidden border border-white/10 mb-4">
+              <img src={photoPreview} alt="Önizleme" className="w-full max-h-32 object-cover" />
+            </div>
+
+            {/* Seçim özet */}
+            {(selectedAlan || selectedIslem) && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {selectedAlan && <span className="px-3 py-1 bg-white/10 rounded-full text-white/70 text-xs">{ALANLAR.find(a => a.key === selectedAlan)?.label}</span>}
+                {selectedIslem && <span className="px-3 py-1 bg-white/10 rounded-full text-white/70 text-xs">{ISLEMLER.find(i => i.key === selectedIslem)?.label}</span>}
+              </div>
+            )}
+
+            <textarea
+              value={command}
+              onChange={e => setCommand(e.target.value)}
+              placeholder="Örn: Duvarları kırmızı boya, yerleri parke yap, büyük cam ekle..."
+              className="w-full h-40 p-5 bg-[#1a1a1a] border border-white/10 rounded-2xl text-white placeholder-white/30 focus:outline-none focus:border-white/30 resize-none text-lg"
+            />
+
+            <button
+              onClick={startAnalysis}
+              disabled={!command.trim()}
+              className="w-full py-4 bg-white text-[#0a0a0a] font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-white/90 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Sparkles size={18} /> YZ Tadilat Oluştur
+            </button>
+            <button onClick={() => setStep('selection')} className="w-full py-3 text-white/40 text-sm hover:text-white transition-colors">
+              ← Geri Dön
+            </button>
+          </div>
+        )}
+
+        {/* === 4. ANALYZING === */}
+        {step === 'analyzing' && (
+          <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8">
+            <div className="w-20 h-20 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+            <div className="text-center space-y-2">
+              <h3 className="text-xl font-bold text-white">AI Analiz Ediyor</h3>
+              <p className="text-white/50 text-sm">Yapay zeka fotoğrafınızı ve komutunuzu işliyor...</p>
+              <p className="text-white/30 text-xs font-mono">{formatTime(elapsedTime)} • %{progress}</p>
+            </div>
+            <div className="w-full max-w-xs h-1 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-white transition-all duration-1000 rounded-full" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+        )}
+
+        {/* === 5. SONUÇ === */}
+        {step === 'result' && (
+          <div className="space-y-6">
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
+                <AlertCircle size={20} className="text-red-400 flex-shrink-0 mt-0.5" />
+                <div><p className="text-red-400 font-medium">{error}</p>
+                  <button onClick={() => setStep('command')} className="text-white/50 text-sm mt-2 hover:text-white">← Tekrar Dene</button>
+                </div>
+              </div>
+            )}
+
+            {generatedImage && (
+              <>
+                <div className="text-center mb-4">
+                  <h2 className="text-2xl font-bold text-white mb-1">Tadilat Önizlemesi</h2>
+                  <p className="text-white/60 text-sm">Yapay zeka tarafından oluşturuldu</p>
+                </div>
+
+                {/* Before / After Slider */}
+                <div className="relative rounded-2xl overflow-hidden border border-white/10 aspect-square"
+                  onMouseMove={e => { const r = e.currentTarget.getBoundingClientRect(); setBeforeAfterPos(((e.clientX - r.left) / r.width) * 100); }}
+                  onTouchMove={e => { const r = e.currentTarget.getBoundingClientRect(); const t = e.touches[0]; setBeforeAfterPos(((t.clientX - r.left) / r.width) * 100); }}
+                >
+                  <img src={generatedImage} alt="Sonrası" className="absolute inset-0 w-full h-full object-cover" />
+                  <div className="absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 ${100 - beforeAfterPos}% 0 0)` }}>
+                    <img src={photoPreview} alt="Öncesi" className="absolute inset-0 w-full h-full object-cover" />
+                  </div>
+                  <div className="absolute top-0 bottom-0 w-0.5 bg-white cursor-ew-resize" style={{ left: `${beforeAfterPos}%` }}>
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg">
+                      <div className="flex gap-0.5"><div className="w-0.5 h-3 bg-[#0a0a0a] rounded-full" /><div className="w-0.5 h-3 bg-[#0a0a0a] rounded-full" /></div>
+                    </div>
+                  </div>
+                  <span className="absolute top-4 left-4 px-2 py-1 bg-black/60 rounded text-white text-xs font-medium">ÖNCESİ</span>
+                  <span className="absolute top-4 right-4 px-2 py-1 bg-white/90 rounded text-[#0a0a0a] text-xs font-medium">SONRASI</span>
+                </div>
+
+                {/* Lokasyon & Fiyat */}
+                <div className="space-y-4 bg-[#1a1a1a] border border-white/10 rounded-2xl p-5">
+                  <h3 className="text-white font-medium flex items-center gap-2"><MapPin size={16} className="text-white/40" /> Proje Lokasyonu</h3>
+                  <div className="grid grid-cols-2 gap-3 relative">
+                    <div ref={ilceRef}>
+                      <label className="text-white/40 text-xs mb-1 block">İlçe</label>
+                      <button onClick={() => setShowIlceDropdown(!showIlceDropdown)} className="w-full p-3 bg-[#0a0a0a] border border-white/10 rounded-xl text-left text-white flex items-center justify-between">
+                        {ilce || 'İlçe Seçin'} <ChevronRight size={14} className="text-white/30" />
+                      </button>
+                      {showIlceDropdown && (
+                        <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto bg-[#1a1a1a] border border-white/10 rounded-xl custom-scrollbar" style={{ width: ilceRef.current?.offsetWidth }}>
+                          {Object.keys(hatayIlceler).map(i => (
+                            <button key={i} onClick={() => { setIlce(i); setMahalle(''); setShowIlceDropdown(false); }} className="w-full px-4 py-2.5 text-left text-white/70 hover:bg-white/5 text-sm">{i}</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div ref={mahalleRef}>
+                      <label className="text-white/40 text-xs mb-1 block">Mahalle</label>
+                      <button onClick={() => ilce && setShowMahalleDropdown(!showMahalleDropdown)} className={`w-full p-3 bg-[#0a0a0a] border border-white/10 rounded-xl text-left flex items-center justify-between ${ilce ? 'text-white' : 'text-white/30'}`}>
+                        {mahalle || 'Mahalle'} <ChevronRight size={14} className="text-white/30" />
+                      </button>
+                      {showMahalleDropdown && ilce && (
+                        <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto bg-[#1a1a1a] border border-white/10 rounded-xl custom-scrollbar" style={{ width: mahalleRef.current?.offsetWidth }}>
+                          {hatayIlceler[ilce].map(m => (
+                            <button key={m} onClick={() => { setMahalle(m); setShowMahalleDropdown(false); }} className="w-full px-4 py-2.5 text-left text-white/70 hover:bg-white/5 text-sm">{m}</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-white/40 text-xs mb-1 block">m²: {metrekare}</label>
+                    <input type="range" min="10" max="500" value={metrekare} onChange={e => setMetrekare(parseInt(e.target.value))} className="w-full accent-white" />
+                  </div>
+                  {priceRange && (
+                    <div className="pt-3 border-t border-white/10">
+                      <p className="text-white/40 text-xs">Tahmini Maliyet Aralığı</p>
+                      <p className="text-xl font-bold text-white">{priceRange}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* WhatsApp CTA */}
+                <div className="space-y-3">
+                  <p className="text-white/40 text-xs text-center">Bu fikir mi? Hemen keşif randevusu alın.</p>
+                  <a href={getWhatsAppLink()} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-3 w-full py-4 bg-green-600 text-white font-bold rounded-xl hover:bg-green-500 transition-colors">
+                    <Phone size={20} /> WhatsApp'tan Keşif Randevusu Al
+                  </a>
+                  <button onClick={() => setStep('command')} className="flex items-center justify-center gap-2 w-full py-3 border border-white/10 text-white/60 rounded-xl hover:border-white/30 hover:text-white transition-all">
+                    <RefreshCw size={16} /> Yeniden Dene
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

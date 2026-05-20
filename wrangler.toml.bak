@@ -1,0 +1,13 @@
+name = "tadilatyap"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+REPLICATE_API_TOKEN = "r8_ST8Ej9wo08JbVYQQ67zLhUD1tC5n2GS4Ig5LS"
+
+# Cloudflare Pages build settings
+[site]
+bucket = "./dist"
+
+# Functions directory
+# Cloudflare Pages will automatically detect functions/ in the project root
