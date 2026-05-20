@@ -57,7 +57,7 @@ export default function Navigation({ onOpenRenovation }: NavigationProps) {
       ref={navRef}
       className={`fixed top-0 left-0 w-full z-50 transition-all duration-500 ${
         scrolled
-          ? 'bg-bg-concrete/90 backdrop-blur-md py-3'
+          ? 'bg-[#002D72]/90 backdrop-blur-md py-3'
           : 'bg-transparent py-5'
       }`}
     >

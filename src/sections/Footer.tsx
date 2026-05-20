@@ -82,7 +82,7 @@ export default function Footer() {
       <div className="bg-bg-dark py-8">
         <div className="max-w-[1400px] mx-auto px-6 md:px-12 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="font-raleway text-white/40 text-xs tracking-widest uppercase">
-            © 2025 tadilatyap.com. Tüm hakları saklıdır.
+            © 2026 tadilatyap.com. Tüm hakları saklıdır. bir K.A.O.S. ARC kuruluşudur.
           </p>
           <div className="flex gap-8">
             <a
