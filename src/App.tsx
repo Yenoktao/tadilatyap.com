@@ -5,7 +5,7 @@ import Navigation from './sections/Navigation';
 import Hero from './sections/Hero';
 import Philosophy from './sections/Philosophy';
 import Services from './sections/Services';
-import AIAssistant from './sections/AIAssistant';
+import AIHizmet from './sections/AIHizmet';
 import Showcase from './sections/Showcase';
 import Sustainability from './sections/Sustainability';
 import Contact from './sections/Contact';
@@ -24,7 +24,7 @@ function App() {
       <Hero onOpenRenovation={() => setRenovationOpen(true)} />
       <Philosophy />
       <Services />
-      <AIAssistant />
+      <AIHizmet />
       <Showcase />
       <Sustainability />
       <Contact />

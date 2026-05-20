@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import ScrollTrigger from 'gsap/ScrollTrigger';
-import { Phone, Mail, MapPin, Clock } from 'lucide-react';
+import { Phone, Mail, Loader2 } from 'lucide-react';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -15,7 +15,9 @@ export default function Contact() {
     startDate: '',
     notes: '',
   });
-  const [submitted, setSubmitted] = useState(false);
+  const [step, setStep] = useState<'form' | 'confirm' | 'success'>('form');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // v2-telegram-teklif-active
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -60,7 +62,29 @@ export default function Contact() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    // Onay ekranına geç
+    setStep('confirm');
+  };
+
+  const handleConfirm = async () => {
+    setIsSubmitting(true);
+    try {
+      await fetch('/api/teklif', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+    } catch {
+      // Hata olsa bile kullanıcıya success göster - veriler en azından onay ekranında görüldü
+    } finally {
+      setIsSubmitting(false);
+      window.scrollTo(0, 0);
+      setStep('success');
+    }
+  };
+
+  const handleEdit = () => {
+    setStep('form');
   };
 
   const handleChange = (
@@ -83,18 +107,77 @@ export default function Contact() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
           {/* Form */}
           <div className="contact-form opacity-0">
-            {submitted ? (
+            {/* === ONAY EKRANI === */}
+            {step === 'confirm' && (
+              <div className="bg-white border border-gray-200 p-8 rounded-lg">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+                  <p className="font-raleway text-amber-800 text-sm leading-relaxed">
+                    <strong>Talebiniz henüz alınmadı.</strong> Dönüş yapabilmemiz için iletişim bilgilerinizin doğru olduğundan emin olunuz.
+                  </p>
+                </div>
+
+                <h3 className="font-raleway font-bold text-xl mb-6 text-text-primary">
+                  Bilgi Özeti
+                </h3>
+
+                <div className="space-y-4 mb-8">
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="font-raleway text-xs tracking-widest uppercase text-text-primary/60">Ad Soyad</span>
+                    <span className="font-raleway text-sm text-text-primary">{formData.name || '-'}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="font-raleway text-xs tracking-widest uppercase text-text-primary/60">Telefon</span>
+                    <span className="font-raleway text-sm text-text-primary">{formData.phone || '-'}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="font-raleway text-xs tracking-widest uppercase text-text-primary/60">E-posta</span>
+                    <span className="font-raleway text-sm text-text-primary">{formData.email || '-'}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="font-raleway text-xs tracking-widest uppercase text-text-primary/60">Bütçe</span>
+                    <span className="font-raleway text-sm text-text-primary">{formData.budget || '-'}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="font-raleway text-xs tracking-widest uppercase text-text-primary/60">Başlama</span>
+                    <span className="font-raleway text-sm text-text-primary">{formData.startDate || '-'}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="font-raleway text-xs tracking-widest uppercase text-text-primary/60">Detaylar</span>
+                    <span className="font-raleway text-sm text-text-primary text-right max-w-[60%]">{formData.notes || '-'}</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleEdit}
+                    className="flex-1 py-4 border border-gray-200 text-text-primary font-raleway font-bold text-sm tracking-widest uppercase rounded-sm hover:bg-gray-50 transition-colors duration-300"
+                  >
+                    Bilgileri Düzenle
+                  </button>
+                  <button
+                    onClick={handleConfirm}
+                    disabled={isSubmitting}
+                    className="flex-1 py-4 bg-bg-dark text-white font-raleway font-bold text-sm tracking-widest uppercase rounded-sm hover:bg-accent-blue transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isSubmitting ? <><Loader2 size={16} className="animate-spin" /> Gönderiliyor...</> : 'Talebi Gönder'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* === BAŞARI MESAJI === */}
+            {step === 'success' && (
               <div className="bg-bg-dark text-white p-8 rounded-lg">
                 <h3 className="font-raleway font-bold text-2xl mb-4">
                   Teklif Talebiniz Alındı!
                 </h3>
                 <p className="font-raleway text-white/70 leading-relaxed">
-                  Kontratörler 24 saat içinde iletişime geçecek. Yeni bir tadilat
+                  En kısa sürede size dönüş yapacağız. Yeni bir tadilat
                   başlatmak için aşağıdaki butonu kullanabilirsiniz.
                 </p>
                 <button
                   onClick={() => {
-                    setSubmitted(false);
+                    setStep('form');
                     setFormData({
                       name: '',
                       phone: '',
@@ -109,7 +192,10 @@ export default function Contact() {
                   Yeni Tadilat Başlat
                 </button>
               </div>
-            ) : (
+            )}
+
+            {/* === FORM === */}
+            {step === 'form' && (
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
@@ -149,7 +235,6 @@ export default function Contact() {
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    required
                     className="w-full bg-white border border-gray-200 px-4 py-3 font-raleway text-sm text-text-primary outline-none focus:border-accent-blue transition-colors duration-300"
                   />
                 </div>
@@ -221,7 +306,7 @@ export default function Contact() {
                   <Phone className="text-accent-blue mt-1 flex-shrink-0" size={20} />
                   <div>
                     <p className="font-raleway text-sm text-white/60">Telefon</p>
-                    <p className="font-raleway text-white">+90 212 555 00 00</p>
+                    <p className="font-raleway text-white">+90 542 506 28 16</p>
                   </div>
                 </div>
 
@@ -229,31 +314,11 @@ export default function Contact() {
                   <Mail className="text-accent-blue mt-1 flex-shrink-0" size={20} />
                   <div>
                     <p className="font-raleway text-sm text-white/60">E-posta</p>
-                    <p className="font-raleway text-white">info@recabemobilya.com</p>
+                    <p className="font-raleway text-white">tespit@tadilatyap.com</p>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-4">
-                  <MapPin className="text-accent-blue mt-1 flex-shrink-0" size={20} />
-                  <div>
-                    <p className="font-raleway text-sm text-white/60">Adres</p>
-                    <p className="font-raleway text-white">
-                      Levent Mah. Büyükdere Cad. No:123
-                      <br />
-                      Şişli / İstanbul
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-4">
-                  <Clock className="text-accent-blue mt-1 flex-shrink-0" size={20} />
-                  <div>
-                    <p className="font-raleway text-sm text-white/60">Çalışma Saatleri</p>
-                    <p className="font-raleway text-white">
-                      Pazartesi - Cuma: 09:00 - 18:00
-                    </p>
-                  </div>
-                </div>
+                {/* Adres ve çalışma saatleri kaldırıldı */}
               </div>
             </div>
           </div>

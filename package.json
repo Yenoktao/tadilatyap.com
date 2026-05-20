@@ -10,7 +10,7 @@
     "check": "tsc -b",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "deploy": "vite build && wrangler pages deploy dist --project-name tadilatyap"
+    "deploy": "vite build && cp -r functions dist/ && wrangler pages deploy dist --project-name tadilatyap"
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20260511.1",

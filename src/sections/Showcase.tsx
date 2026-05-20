@@ -24,10 +24,10 @@ const projects = [
     category: 'Villa',
   },
   {
-    title: 'Tarihi Yapı',
-    location: 'Galata, İstanbul',
-    image: '/assets/project-4.jpg',
-    category: 'Restorasyon',
+    title: 'Komple Konut Tadilat',
+    location: 'Antakya, Hatay',
+    image: '/assets/project-4-new.png',
+    category: 'Konut',
   },
 ];
 

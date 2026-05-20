@@ -9,8 +9,8 @@ module.exports = {
       },
       colors: {
         'bg-primary': '#F3F4F6',
-        'bg-dark': '#003D7C',
-        'bg-concrete': '#00295A',
+        'bg-dark': '#002D72',
+        'bg-concrete': '#001D5C',
         'text-primary': '#111111',
         'text-inverse': '#FFFFFF',
         'accent-blue': '#F36621',

@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import {
   X, ImagePlus, Sparkles, ChevronRight, RefreshCw, Check,
-  AlertCircle, MapPin, Phone, Home, Paintbrush, Layers, Sofa, TreePine, Building
+  AlertCircle, MapPin, Phone, Home, Paintbrush, Sofa, TreePine, Building
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 
@@ -11,7 +11,7 @@ interface Props { isOpen: boolean; onClose: () => void; }
 const ALANLAR = [
   { key: 'mutfak', label: 'Mutfak', icon: Home },
   { key: 'banyo', label: 'Banyo', icon: Home },
-  { key: 'salon', label: 'Salon', icon: Sofa },
+  { key: 'salon', label: 'Oda', icon: Sofa },
   { key: 'discephe', label: 'Dış Cephe', icon: Building },
   { key: 'bahce', label: 'Bahçe', icon: TreePine },
   { key: 'diger', label: 'Diğer', icon: Home },
@@ -25,15 +25,6 @@ const ISLEMLER = [
   { key: 'pencere', label: 'Pencere' },
   { key: 'cati', label: 'Çatı' },
   { key: 'diger', label: 'Diğer' },
-];
-
-const STILLER = [
-  { key: 'modern', label: 'Modern' },
-  { key: 'klasik', label: 'Klasik' },
-  { key: 'minimal', label: 'Minimal' },
-  { key: 'rustik', label: 'Rustik' },
-  { key: 'luks', label: 'Lüks' },
-  { key: 'ekonomik', label: 'Ekonomik' },
 ];
 
 // Hatay ilçeleri ve mahalleleri
@@ -69,11 +60,10 @@ function calculatePrice(metrekare: number, ilce: string): string {
 }
 
 // Prompt oluşturucu - seçimlerden AI promptu üret
-function buildPrompt(userCommand: string, alan: string, islem: string, stil: string): string {
+function buildPrompt(userCommand: string, alan: string, islem: string): string {
   const parts: string[] = [];
   if (alan && alan !== 'diger') parts.push(`${ALANLAR.find(a => a.key === alan)?.label || alan} tadilatı`);
   if (islem && islem !== 'diger') parts.push(`${ISLEMLER.find(i => i.key === islem)?.label || islem} işlemi`);
-  if (stil && stil !== 'diger') parts.push(`${STILLER.find(s => s.key === stil)?.label || stil} tarzında`);
   parts.push(`Kullanıcı isteği: ${userCommand}`);
   return parts.join(', ');
 }
@@ -123,8 +113,6 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   // Seçim state'leri
   const [selectedAlan, setSelectedAlan] = useState('');
   const [selectedIslem, setSelectedIslem] = useState('');
-  const [selectedStil, setSelectedStil] = useState('');
-
   // Telefon doğrulama
   const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState('');
@@ -187,7 +175,7 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
     setStep('analyzing'); setProgress(0); setError(''); setElapsedTime(0);
 
     // Seçimlerden prompt oluştur
-    const fullCommand = buildPrompt(command.trim(), selectedAlan, selectedIslem, selectedStil);
+    const fullCommand = buildPrompt(command.trim(), selectedAlan, selectedIslem);
 
     const timer = setInterval(() => setElapsedTime(t => t + 1), 1000);
     const progressInterval = setInterval(() => setProgress(p => Math.min(p + 3, 90)), 1000);
@@ -342,35 +330,12 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
               </div>
             </div>
 
-            {/* Stil Seçimi */}
-            <div>
-              <h3 className="text-white font-medium mb-3 flex items-center gap-2">
-                <Layers size={16} className="text-white/40" /> Hangi Stil?
-              </h3>
-              <div className="grid grid-cols-3 gap-2">
-                {STILLER.map(s => {
-                  const isActive = selectedStil === s.key;
-                  return (
-                    <button
-                      key={s.key}
-                      onClick={() => setSelectedStil(isActive ? '' : s.key)}
-                      className={`py-2.5 px-2 rounded-xl text-sm font-medium border transition-all ${
-                        isActive ? 'bg-white text-[#0a0a0a] border-white' : 'bg-[#1a1a1a] text-white/70 border-white/10 hover:border-white/30'
-                      }`}
-                    >
-                      {s.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             {/* Prompt önizleme */}
-            {(selectedAlan || selectedIslem || selectedStil) && (
+            {(selectedAlan || selectedIslem) && (
               <div className="bg-[#1a1a1a] border border-white/10 rounded-xl p-4">
                 <p className="text-white/40 text-xs mb-1">AI'ın göreceği komut:</p>
                 <p className="text-white/80 text-sm font-medium">
-                  {buildPrompt('...', selectedAlan, selectedIslem, selectedStil).replace(', Kullanıcı isteği: ...', '')}
+                  {buildPrompt('...', selectedAlan, selectedIslem).replace(', Kullanıcı isteği: ...', '')}
                 </p>
               </div>
             )}
@@ -397,11 +362,10 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
             </div>
 
             {/* Seçim özet */}
-            {(selectedAlan || selectedIslem || selectedStil) && (
+            {(selectedAlan || selectedIslem) && (
               <div className="flex flex-wrap gap-2 mb-2">
                 {selectedAlan && <span className="px-3 py-1 bg-white/10 rounded-full text-white/70 text-xs">{ALANLAR.find(a => a.key === selectedAlan)?.label}</span>}
                 {selectedIslem && <span className="px-3 py-1 bg-white/10 rounded-full text-white/70 text-xs">{ISLEMLER.find(i => i.key === selectedIslem)?.label}</span>}
-                {selectedStil && <span className="px-3 py-1 bg-white/10 rounded-full text-white/70 text-xs">{STILLER.find(s => s.key === selectedStil)?.label}</span>}
               </div>
             )}
 

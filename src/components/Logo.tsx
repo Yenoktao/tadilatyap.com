@@ -4,7 +4,7 @@ interface LogoProps {
 
 export default function Logo({ className = '' }: LogoProps) {
   return (
-    <div className={`flex items-center ${className}`}>
+    <div className={`flex items-center bg-[#002D72] px-3 py-1.5 rounded ${className}`}>
       <img
         src="/assets/tadilatyap-logo.png"
         alt="tadilatyap.com"

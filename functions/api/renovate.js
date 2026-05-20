@@ -23,8 +23,8 @@ export async function onRequestPost(context) {
     const mimeType = imageFile.type || "image/jpeg";
     const dataUrl = `data:${mimeType};base64,${base64}`;
 
-    // Model adını env'den al (varsayılan: flux-kontext-pro - tek görsel)
-    const model = env.REPLICATE_MODEL || "black-forest-labs/flux-kontext-pro";
+    // Model adını env'den al (varsayılan: openai/gpt-image-2 - tek görsel)
+    const model = env.REPLICATE_MODEL || "openai/gpt-image-2";
 
     // Model'e göre parametreleri ayarla
     const inputParams = {
@@ -35,7 +35,7 @@ export async function onRequestPost(context) {
     if (model.includes("gpt-image")) {
       inputParams.input_images = [dataUrl];
       inputParams.aspect_ratio = "1:1";
-      inputParams.quality = "medium";
+      inputParams.quality = "low";
       inputParams.number_of_images = 1;
       inputParams.output_format = "png";
     } else if (model.includes("flux-kontext-apps/multi-image")) {
@@ -45,7 +45,7 @@ export async function onRequestPost(context) {
       inputParams.aspect_ratio = "1:1";
       inputParams.output_format = "png";
       inputParams.safety_tolerance = 2;
-    } else if (model.includes("black-forest-labs/flux-kontext-pro")) {
+    } else if (model.includes("openai/gpt-image-2")) {
       // FLUX Kontext Pro - tek görsel, prompt editing
       inputParams.input_image = dataUrl;
       inputParams.aspect_ratio = "match_input_image";
@@ -118,6 +118,32 @@ function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
+}
+
+// Telegram Bot'a mesaj gönder (form bildirimleri için)
+async function sendTelegramNotification(token, chatId, formData) {
+  try {
+    const message = `📋 *Yeni Tadilat Teklif Talebi*\n\n` +
+      `👤 *Ad:* ${formData.name || '-'}` +
+      `📞 *Telefon:* ${formData.phone || '-'}` +
+      `📧 *Email:* ${formData.email || '-'}` +
+      `💰 *Bütçe:* ${formData.budget || '-'}` +
+      `📅 *Başlama:* ${formData.startDate || '-'}` +
+      `📝 *Detaylar:* ${formData.notes || '-'}\n\n` +
+      `⏰ ${new Date().toLocaleString('tr-TR')}`;
+
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'Markdown',
+      }),
+    });
+  } catch (err) {
+    console.log('[TELEGRAM] Error:', err.message);
+  }
 }
 
 function jsonSuccess(data) {
