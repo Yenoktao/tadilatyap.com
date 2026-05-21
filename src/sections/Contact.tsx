@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import ScrollTrigger from 'gsap/ScrollTrigger';
-import { Phone, Mail, Loader2 } from 'lucide-react';
+import { Mail, Loader2 } from 'lucide-react';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -303,22 +303,12 @@ export default function Contact() {
 
               <div className="space-y-6">
                 <div className="flex items-start gap-4">
-                  <Phone className="text-accent-blue mt-1 flex-shrink-0" size={20} />
-                  <div>
-                    <p className="font-raleway text-sm text-white/60">Telefon</p>
-                    <p className="font-raleway text-white">+90 542 506 28 16</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-4">
                   <Mail className="text-accent-blue mt-1 flex-shrink-0" size={20} />
                   <div>
                     <p className="font-raleway text-sm text-white/60">E-posta</p>
                     <p className="font-raleway text-white">tespit@tadilatyap.com</p>
                   </div>
                 </div>
-
-                {/* Adres ve çalışma saatleri kaldırıldı */}
               </div>
             </div>
           </div>
