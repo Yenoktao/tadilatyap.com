@@ -162,9 +162,21 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   const startCamera = async () => {
     setCameraError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      // Mobil icin arka kamera tercih et, ama desteklemiyorsa herhangi kamera
+      let constraints: MediaStreamConstraints = { video: true, audio: false };
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        if (videoDevices.length > 1) {
+          // 1'den fazla kamera varsa arka kamera tercih et
+          constraints = { video: { facingMode: { ideal: 'environment' } }, audio: false };
+        }
+      } catch { /* ignore */ }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        await videoRef.current.play();
       }
       setCameraActive(true);
     } catch {
@@ -313,8 +325,16 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
             {/* Kamera aktifse video goster */}
             {cameraActive ? (
               <div className="space-y-4">
-                <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-[#1a1a1a]">
-                  <video ref={videoRef} autoPlay playsInline className="w-full aspect-square object-cover" />
+                <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-black">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full aspect-[4/3] object-cover"
+                    onLoadedMetadata={() => videoRef.current?.play()}
+                    style={{ minHeight: '240px', background: '#000' }}
+                  />
                   <canvas ref={canvasRef} className="hidden" />
                 </div>
                 <div className="flex gap-3">
