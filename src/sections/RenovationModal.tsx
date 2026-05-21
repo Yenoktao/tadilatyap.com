@@ -68,21 +68,6 @@ function buildPrompt(userCommand: string, alan: string, islem: string): string {
   return parts.join(', ');
 }
 
-// Telefon doğrulama - basit localStorage tabanlı
-function isPhoneUsed(phone: string): boolean {
-  try {
-    const used = JSON.parse(localStorage.getItem('tadilatyap_phones') || '[]');
-    return used.includes(phone.replace(/\s/g, ''));
-  } catch { return false; }
-}
-function markPhoneUsed(phone: string) {
-  try {
-    const used = JSON.parse(localStorage.getItem('tadilatyap_phones') || '[]');
-    used.push(phone.replace(/\s/g, ''));
-    localStorage.setItem('tadilatyap_phones', JSON.stringify(used));
-  } catch { /* ignore */ }
-}
-
 async function compressImage(file: File): Promise<{ dataUrl: string; blob: Blob }> {
   const blob = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 512, useWebWorker: true, fileType: 'image/jpeg', initialQuality: 0.7 });
   const dataUrl = await imageCompression.getDataUrlFromFile(blob);
@@ -113,10 +98,6 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   // Seçim state'leri
   const [selectedAlan, setSelectedAlan] = useState('');
   const [selectedIslem, setSelectedIslem] = useState('');
-  // Telefon doğrulama
-  const [phone, setPhone] = useState('');
-  const [phoneError, setPhoneError] = useState('');
-  const [phoneVerified, setPhoneVerified] = useState(true); // Telefon adimi atla
 
   const [photoPreview, setPhotoPreview] = useState('');
   const [imageFile, setImageFile] = useState<Blob | null>(null);
@@ -134,90 +115,107 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   const [showIlceDropdown, setShowIlceDropdown] = useState(false);
   const [showMahalleDropdown, setShowMahalleDropdown] = useState(false);
 
+  // Kamera ref ve state'leri
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
+  const streamRef = useRef<MediaStream | null>(null);
   const ilceRef = useRef<HTMLDivElement>(null);
   const mahalleRef = useRef<HTMLDivElement>(null);
 
-  // Telefon doğrula
-  const verifyPhone = () => {
-    const cleaned = phone.replace(/\s/g, '');
-    if (cleaned.length < 10) {
-      setPhoneError('Geçerli bir telefon numarası girin');
-      return;
-    }
-    if (isPhoneUsed(cleaned)) {
-      setPhoneError('Bu numara ile zaten tadilat oluşturdunuz. Yeni bir numara girin.');
-      return;
-    }
-    setPhoneError('');
-    setPhoneVerified(true);
-    markPhoneUsed(cleaned);
-  };
-
-  // Kamera baslat
-  const startCamera = async () => {
+  // Kamera baslat - async icinde video.play() await ile
+  const startCamera = useCallback(async () => {
     setCameraError('');
     try {
-      // Mobil icin arka kamera tercih et, ama desteklemiyorsa herhangi kamera
+      // Onceden acik stream varsa kapat
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+
       let constraints: MediaStreamConstraints = { video: true, audio: false };
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = devices.filter(d => d.kind === 'videoinput');
         if (videoDevices.length > 1) {
-          // 1'den fazla kamera varsa arka kamera tercih et
           constraints = { video: { facingMode: { ideal: 'environment' } }, audio: false };
         }
       } catch { /* ignore */ }
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        // loadedmetadata beklemeden direkt play
+        await videoRef.current.play().catch(() => {
+          // play hatasi olursa loadedmetadata'da tekrar dene
+        });
       }
       setCameraActive(true);
     } catch {
       setCameraError('Kameraya erişilemedi. Lütfen kamera izni verin veya galeriden fotoğraf seçin.');
     }
-  };
+  }, []);
 
   // Kamera durdur
-  const stopCamera = () => {
-    const video = videoRef.current;
-    if (video && video.srcObject) {
-      const tracks = (video.srcObject as MediaStream).getTracks();
-      tracks.forEach(t => t.stop());
-      video.srcObject = null;
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setCameraActive(false);
     setCameraError('');
-  };
+  }, []);
 
   // Fotograf cek
-  const capturePhoto = () => {
+  const capturePhoto = useCallback(async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+
+    // Video oynuyor mu kontrol et
+    if (video.readyState < 2) {
+      setCameraError('Kamera henüz hazır değil. Lütfen bekleyin.');
+      return;
+    }
+
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(video, 0, 0);
+
     canvas.toBlob(async (blob) => {
       if (!blob) return;
       const file = new File([blob], 'camera-photo.jpg', { type: 'image/jpeg' });
       await handleFile(file);
       stopCamera();
-    }, 'image/jpeg', 0.8);
-  };
+    }, 'image/jpeg', 0.85);
+  }, [stopCamera]);
+
+  // Video loadedmetadata handler
+  const handleVideoLoaded = useCallback(async () => {
+    if (videoRef.current) {
+      try {
+        await videoRef.current.play();
+      } catch (err) {
+        console.log('Video play error:', err);
+      }
+    }
+  }, []);
 
   // Modal kapandiginda kamerasi kapat
   useEffect(() => {
-    if (!isOpen) stopCamera();
-  }, [isOpen]);
+    if (!isOpen) {
+      stopCamera();
+    }
+  }, [isOpen, stopCamera]);
 
   const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) return;
@@ -275,37 +273,6 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
 
   if (!isOpen) return null;
 
-  // === TELEFON DOĞRULAMA EKRANI ===
-  if (!phoneVerified) {
-    return (
-      <div className="fixed inset-0 z-[100] bg-[#0a0a0a] flex items-center justify-center p-4">
-        <button onClick={onClose} className="fixed top-5 right-5 z-50 w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">
-          <X size={18} />
-        </button>
-        <div className="max-w-sm w-full bg-[#1a1a1a] border border-white/10 rounded-2xl p-8 text-center">
-          <Phone size={48} className="mx-auto text-white/40 mb-6" />
-          <h2 className="text-2xl font-bold text-white mb-2">Tadilata Başla</h2>
-          <p className="text-white/60 text-sm mb-6">Her telefon numarasına 1 tadilat hakkı veriyoruz. Geçerli telefon numaranızı girin.</p>
-          <input
-            type="tel"
-            placeholder="05XX XXX XX XX"
-            value={phone}
-            onChange={e => { setPhone(e.target.value); setPhoneError(''); }}
-            className="w-full px-4 py-3 bg-[#0a0a0a] border border-white/10 rounded-xl text-white placeholder-white/30 text-center text-lg tracking-wider focus:outline-none focus:border-white/30 mb-3"
-          />
-          {phoneError && <p className="text-red-400 text-sm mb-4">{phoneError}</p>}
-          <button
-            onClick={verifyPhone}
-            className="w-full py-3 bg-white text-[#0a0a0a] font-bold rounded-xl hover:bg-white/90 transition-colors"
-          >
-            Devam Et
-          </button>
-          <p className="text-white/30 text-xs mt-4">Bir telefon numarası ile sadece 1 kez tadilat oluşturabilirsiniz.</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="fixed inset-0 z-[100] bg-[#0a0a0a] overflow-y-auto p-4">
       <button onClick={onClose} className="fixed top-5 right-5 z-50 w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">
@@ -331,9 +298,9 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
                     autoPlay
                     playsInline
                     muted
-                    className="w-full aspect-[4/3] object-cover"
-                    onLoadedMetadata={() => videoRef.current?.play()}
-                    style={{ minHeight: '240px', background: '#000' }}
+                    onLoadedMetadata={handleVideoLoaded}
+                    className="w-full h-64 object-cover"
+                    style={{ background: '#000', minHeight: '256px' }}
                   />
                   <canvas ref={canvasRef} className="hidden" />
                 </div>
@@ -378,7 +345,7 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
           </div>
         )}
 
-        {/* === 2. SEÇİM EKRANI (YENİ) === */}
+        {/* === 2. SEÇİM EKRANI === */}
         {step === 'selection' && photoPreview && (
           <div className="space-y-8">
             <div className="text-center mb-4">
@@ -386,12 +353,10 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
               <p className="text-white/60 text-sm">Seçimleriniz AI'ın daha doğru sonuç üretmesine yardımcı olur</p>
             </div>
 
-            {/* Önizleme */}
             <div className="rounded-xl overflow-hidden border border-white/10">
               <img src={photoPreview} alt="Önizleme" className="w-full max-h-48 object-cover" />
             </div>
 
-            {/* Alan Seçimi */}
             <div>
               <h3 className="text-white font-medium mb-3 flex items-center gap-2">
                 <Home size={16} className="text-white/40" /> Hangi Alan?
@@ -416,7 +381,6 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
               </div>
             </div>
 
-            {/* İşlem Seçimi */}
             <div>
               <h3 className="text-white font-medium mb-3 flex items-center gap-2">
                 <Paintbrush size={16} className="text-white/40" /> Ne Yapılsın?
@@ -439,7 +403,6 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
               </div>
             </div>
 
-            {/* Prompt önizleme */}
             {(selectedAlan || selectedIslem) && (
               <div className="bg-[#1a1a1a] border border-white/10 rounded-xl p-4">
                 <p className="text-white/40 text-xs mb-1">AI'ın göreceği komut:</p>
@@ -470,7 +433,6 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
               <img src={photoPreview} alt="Önizleme" className="w-full max-h-32 object-cover" />
             </div>
 
-            {/* Seçim özet */}
             {(selectedAlan || selectedIslem) && (
               <div className="flex flex-wrap gap-2 mb-2">
                 {selectedAlan && <span className="px-3 py-1 bg-white/10 rounded-full text-white/70 text-xs">{ALANLAR.find(a => a.key === selectedAlan)?.label}</span>}
@@ -532,7 +494,6 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
                   <p className="text-white/60 text-sm">Yapay zeka tarafından oluşturuldu</p>
                 </div>
 
-                {/* Before / After Slider */}
                 <div className="relative rounded-2xl overflow-hidden border border-white/10 aspect-square"
                   onMouseMove={e => { const r = e.currentTarget.getBoundingClientRect(); setBeforeAfterPos(((e.clientX - r.left) / r.width) * 100); }}
                   onTouchMove={e => { const r = e.currentTarget.getBoundingClientRect(); const t = e.touches[0]; setBeforeAfterPos(((t.clientX - r.left) / r.width) * 100); }}
@@ -550,7 +511,6 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
                   <span className="absolute top-4 right-4 px-2 py-1 bg-white/90 rounded text-[#0a0a0a] text-xs font-medium">SONRASI</span>
                 </div>
 
-                {/* Lokasyon & Fiyat */}
                 <div className="space-y-4 bg-[#1a1a1a] border border-white/10 rounded-2xl p-5">
                   <h3 className="text-white font-medium flex items-center gap-2"><MapPin size={16} className="text-white/40" /> Proje Lokasyonu</h3>
                   <div className="grid grid-cols-2 gap-3 relative">
@@ -593,7 +553,6 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
                   )}
                 </div>
 
-                {/* WhatsApp CTA */}
                 <div className="space-y-3">
                   <p className="text-white/40 text-xs text-center">Bu fikir mi? Hemen keşif randevusu alın.</p>
                   <a href={getWhatsAppLink()} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-3 w-full py-4 bg-green-600 text-white font-bold rounded-xl hover:bg-green-500 transition-colors">
