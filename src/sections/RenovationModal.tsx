@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   X, ImagePlus, Sparkles, ChevronRight, RefreshCw, Check,
-  AlertCircle, MapPin, Phone, Home, Paintbrush, Sofa, TreePine, Building
+  AlertCircle, MapPin, Phone, Home, Paintbrush, Sofa, TreePine, Building, Camera
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 
@@ -116,7 +116,7 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   // Telefon doğrulama
   const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState('');
-  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [phoneVerified, setPhoneVerified] = useState(true); // Telefon adimi atla
 
   const [photoPreview, setPhotoPreview] = useState('');
   const [imageFile, setImageFile] = useState<Blob | null>(null);
@@ -135,6 +135,10 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   const [showMahalleDropdown, setShowMahalleDropdown] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState('');
   const ilceRef = useRef<HTMLDivElement>(null);
   const mahalleRef = useRef<HTMLDivElement>(null);
 
@@ -153,6 +157,55 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
     setPhoneVerified(true);
     markPhoneUsed(cleaned);
   };
+
+  // Kamera baslat
+  const startCamera = async () => {
+    setCameraError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setCameraActive(true);
+    } catch {
+      setCameraError('Kameraya erişilemedi. Lütfen kamera izni verin veya galeriden fotoğraf seçin.');
+    }
+  };
+
+  // Kamera durdur
+  const stopCamera = () => {
+    const video = videoRef.current;
+    if (video && video.srcObject) {
+      const tracks = (video.srcObject as MediaStream).getTracks();
+      tracks.forEach(t => t.stop());
+      video.srcObject = null;
+    }
+    setCameraActive(false);
+    setCameraError('');
+  };
+
+  // Fotograf cek
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      const file = new File([blob], 'camera-photo.jpg', { type: 'image/jpeg' });
+      await handleFile(file);
+      stopCamera();
+    }, 'image/jpeg', 0.8);
+  };
+
+  // Modal kapandiginda kamerasi kapat
+  useEffect(() => {
+    if (!isOpen) stopCamera();
+  }, [isOpen]);
 
   const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) return;
@@ -249,23 +302,59 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
 
       <div className="max-w-lg mx-auto pt-12 pb-20">
 
-        {/* === 1. FOTOĞRAF YÜKLEME === */}
+        {/* === 1. FOTOĞRAF YÜKLEME / KAMERA === */}
         {step === 'upload' && (
           <div className="space-y-6">
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold text-white mb-2">Fotoğraf Yükle</h2>
-              <p className="text-white/60 text-sm">Tadilat yapılacak alanın fotoğrafını yükleyin</p>
+              <p className="text-white/60 text-sm">Tadilat yapılacak alanın fotoğrafını yükleyin veya kamerayla çekin</p>
             </div>
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              onDrop={onDrop}
-              onDragOver={e => e.preventDefault()}
-              className="aspect-square max-h-[60vh] rounded-2xl border-2 border-dashed border-white/10 bg-[#1a1a1a] flex flex-col items-center justify-center cursor-pointer hover:border-white/30 hover:bg-[#222] transition-all"
-            >
-              <ImagePlus size={48} className="text-white/30 mb-4" />
-              <p className="text-white/60 text-sm">Fotoğraf yüklemek için tıklayın veya sürükleyin</p>
-              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
-            </div>
+
+            {/* Kamera aktifse video goster */}
+            {cameraActive ? (
+              <div className="space-y-4">
+                <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-[#1a1a1a]">
+                  <video ref={videoRef} autoPlay playsInline className="w-full aspect-square object-cover" />
+                  <canvas ref={canvasRef} className="hidden" />
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={stopCamera} className="flex-1 py-3 bg-white/5 border border-white/10 text-white/70 rounded-xl hover:bg-white/10 transition-colors text-sm font-medium">
+                    İptal
+                  </button>
+                  <button onClick={capturePhoto} className="flex-1 py-3 bg-white text-[#0a0a0a] font-bold rounded-xl hover:bg-white/90 transition-colors text-sm flex items-center justify-center gap-2">
+                    <Camera size={16} /> Çek
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Kamera kapaliysa iki buton goster */
+              <div className="space-y-4">
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  onDrop={onDrop}
+                  onDragOver={e => e.preventDefault()}
+                  className="aspect-[4/3] rounded-2xl border-2 border-dashed border-white/10 bg-[#1a1a1a] flex flex-col items-center justify-center cursor-pointer hover:border-white/30 hover:bg-[#222] transition-all"
+                >
+                  <ImagePlus size={48} className="text-white/30 mb-4" />
+                  <p className="text-white/60 text-sm font-medium">Galeriden Fotoğraf Seç</p>
+                  <p className="text-white/30 text-xs mt-1">Tıklayın veya sürükleyin</p>
+                </div>
+
+                <button
+                  onClick={startCamera}
+                  className="w-full py-4 bg-[#1a1a1a] border border-white/10 rounded-2xl text-white font-medium flex items-center justify-center gap-3 hover:border-white/30 hover:bg-[#222] transition-all"
+                >
+                  <Camera size={24} className="text-white/40" />
+                  <span>Kamerayı Aç</span>
+                </button>
+
+                {cameraError && (
+                  <p className="text-red-400 text-sm text-center">{cameraError}</p>
+                )}
+
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
+              </div>
+            )}
           </div>
         )}
 
