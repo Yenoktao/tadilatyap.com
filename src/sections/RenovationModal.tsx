@@ -125,6 +125,14 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   const ilceRef = useRef<HTMLDivElement>(null);
   const mahalleRef = useRef<HTMLDivElement>(null);
 
+  // cameraActive true oldugunda video'ya stream bagla
+  useEffect(() => {
+    if (cameraActive && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [cameraActive]);
+
   // Kamera baslat - async icinde video.play() await ile
   const startCamera = useCallback(async () => {
     setCameraError('');
