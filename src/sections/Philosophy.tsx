@@ -139,7 +139,7 @@ export default function Philosophy() {
               className="font-raleway text-text-primary/80 text-base md:text-lg mt-8 max-w-md leading-relaxed opacity-0"
             >
               Yapısal bütünlüğü estetik mükemmelle buluşturan bir süreç. Tüm
-              projelerimizde malzeme bilimi, statik hesaplama ve 3B modelleme
+              projelerimizde malzeme bilimi, statik hesaplama ve 3D modelleme
               teknolojilerini bir araya getiriyoruz.
             </p>
           </div>
