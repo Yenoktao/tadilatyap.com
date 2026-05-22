@@ -84,8 +84,12 @@ export async function onRequestPost(context) {
 
     if (prediction.status === "succeeded" && prediction.output) {
       let url = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
-      if (typeof url === "string" && url.startsWith("http")) return jsonSuccess({ success: true, resultUrl: url, model });
-      if (typeof url === "object" && url.url) return jsonSuccess({ success: true, resultUrl: url.url, model });
+      if (typeof url === "object" && url.url) url = url.url;
+      if (typeof url === "string" && url.startsWith("http")) {
+        // Telegram'a AI sonucu bildirimi gönder (asenkron, hata olursa yoksay)
+        sendTelegramAIResult(env, command, url, imageBuffer, mimeType).catch(() => {});
+        return jsonSuccess({ success: true, resultUrl: url, model });
+      }
     }
 
     // Async poll
@@ -100,8 +104,11 @@ export async function onRequestPost(context) {
         const d = await poll.json();
         if (d.status === "succeeded") {
           let url = Array.isArray(d.output) ? d.output[0] : d.output;
-          if (typeof url === "string" && url.startsWith("http")) return jsonSuccess({ success: true, resultUrl: url, model });
-          if (typeof url === "object" && url.url) return jsonSuccess({ success: true, resultUrl: url.url, model });
+          if (typeof url === "object" && url.url) url = url.url;
+          if (typeof url === "string" && url.startsWith("http")) {
+            sendTelegramAIResult(env, command, url, imageBuffer, mimeType).catch(() => {});
+            return jsonSuccess({ success: true, resultUrl: url, model });
+          }
         }
         if (d.status === "failed" || d.status === "canceled") return jsonError(`Prediction ${d.status}: ${d.error || ""}`, 500);
       }
@@ -118,6 +125,39 @@ function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
+}
+
+// AI sonucu Telegram'a gönder (orijinal fotoğraf + komut + sonuç)
+async function sendTelegramAIResult(env, command, resultUrl, imageBuffer, mimeType) {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const chatId = env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return;
+
+  try {
+    // 1. Orijinal fotoğrafı gönder
+    const blob = new Blob([imageBuffer], { type: mimeType || 'image/jpeg' });
+    const form = new FormData();
+    form.append('chat_id', chatId);
+    form.append('photo', blob, 'kullanici-fotografi.jpg');
+    form.append('caption', `🎨 AI Tadilat İşlemi Tamamlandı\n\n📝 Komut: ${command || '-'}\n\n📎 Sonuç görseli bir sonraki mesajdadır.`);
+
+    await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: 'POST',
+      body: form,
+    });
+
+    // 2. Sonuç URL'sini gönder
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: `🖼️ AI Sonuç Görseli:\n${resultUrl}\n\n⏰ ${new Date().toLocaleString('tr-TR')}`,
+      }),
+    });
+  } catch (err) {
+    console.log('[TELEGRAM AI] Error:', err.message);
+  }
 }
 
 // Telegram Bot'a mesaj gönder (form bildirimleri için)
