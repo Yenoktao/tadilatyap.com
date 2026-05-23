@@ -103,6 +103,8 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   const [imageFile, setImageFile] = useState<Blob | null>(null);
   const [command, setCommand] = useState('');
   const [generatedImage, setGeneratedImage] = useState('');
+  const [revizeCommand, setRevizeCommand] = useState('');
+  const [showRevize, setShowRevize] = useState(false);
   const [beforeAfterPos, setBeforeAfterPos] = useState(50);
   const [progress, setProgress] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -241,12 +243,13 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   };
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); };
 
-  const startAnalysis = async () => {
-    if (!imageFile || !command.trim()) return;
+  const startAnalysis = async (overrideCommand?: string) => {
+    const cmd = overrideCommand || command;
+    if (!imageFile || !cmd.trim()) return;
     setStep('analyzing'); setProgress(0); setError(''); setElapsedTime(0);
 
     // Seçimlerden prompt oluştur
-    const fullCommand = buildPrompt(command.trim(), selectedAlan, selectedIslem);
+    const fullCommand = buildPrompt(cmd.trim(), selectedAlan, selectedIslem);
 
     const timer = setInterval(() => setElapsedTime(t => t + 1), 1000);
     const progressInterval = setInterval(() => setProgress(p => Math.min(p + 3, 90)), 1000);
@@ -566,8 +569,46 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
                   <a href={getWhatsAppLink()} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-3 w-full py-4 bg-green-600 text-white font-bold rounded-xl hover:bg-green-500 transition-colors">
                     <Phone size={20} /> WhatsApp'tan Keşif Randevusu Al
                   </a>
-                  <button onClick={() => setStep('command')} className="flex items-center justify-center gap-2 w-full py-3 border border-white/10 text-white/60 rounded-xl hover:border-white/30 hover:text-white transition-all">
-                    <RefreshCw size={16} /> Yeniden Dene
+
+                  {/* REVIZE ET BOLUMU */}
+                  {!showRevize ? (
+                    <button onClick={() => setShowRevize(true)} className="flex items-center justify-center gap-2 w-full py-3 border border-[#F36621]/30 text-[#F36621] rounded-xl hover:border-[#F36621] hover:bg-[#F36621]/10 transition-all">
+                      <RefreshCw size={16} /> Revize Et — Yeni İstek Yaz
+                    </button>
+                  ) : (
+                    <div className="space-y-3 bg-[#1a1a1a] border border-white/10 rounded-xl p-4">
+                      <p className="text-white/40 text-xs">Aynı fotoğraf üzerinden yeni bir istekte bulunun:</p>
+                      <textarea
+                        value={revizeCommand}
+                        onChange={e => setRevizeCommand(e.target.value)}
+                        placeholder="Örn: Kapıyı beyaz yap, çatıyı kırmızı kiremit yap..."
+                        className="w-full h-24 p-3 bg-[#0a0a0a] border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-[#F36621] resize-none text-sm"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowRevize(false)}
+                          className="flex-1 py-2.5 border border-white/10 text-white/60 rounded-lg text-sm hover:border-white/30 transition-colors"
+                        >
+                          İptal
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!revizeCommand.trim()) return;
+                            setShowRevize(false);
+                            setCommand(revizeCommand);
+                            await startAnalysis(revizeCommand);
+                          }}
+                          disabled={!revizeCommand.trim()}
+                          className="flex-1 py-2.5 bg-[#F36621] text-white font-bold rounded-lg text-sm hover:bg-[#e55a1a] transition-colors disabled:opacity-40"
+                        >
+                          Revize Gönder
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <button onClick={() => setStep('command')} className="flex items-center justify-center gap-2 w-full py-3 border border-white/10 text-white/40 rounded-xl hover:border-white/30 hover:text-white/60 transition-all text-sm">
+                    ← Komut Ekranına Dön
                   </button>
                 </div>
               </>
