@@ -133,23 +133,34 @@ function arrayBufferToBase64(buffer) {
 async function sendTelegramAIResult(env, command, resultUrl, imageBuffer, mimeType) {
   const token = env.TELEGRAM_BOT_TOKEN;
   const chatId = env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) return;
+  
+  console.log('[TELEGRAM AI] Basladi. Token:', !!token, 'ChatID:', !!chatId);
+  
+  if (!token || !chatId) {
+    console.log('[TELEGRAM AI] EKSİK: BOT_TOKEN veya CHAT_ID yok!');
+    return;
+  }
 
   try {
     // 1. Orijinal fotoğrafı gönder
+    console.log('[TELEGRAM AI] 1. Orijinal foto gonderiliyor...');
     const blob = new Blob([imageBuffer], { type: mimeType || 'image/jpeg' });
     const form1 = new FormData();
     form1.append('chat_id', chatId);
     form1.append('photo', blob, 'orijinal-foto.jpg');
     form1.append('caption', `🎨 AI Tadilat İşlemi\n\n📝 Komut: ${command || '-'}`);
 
-    await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+    const res1 = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
       method: 'POST',
       body: form1,
     });
+    console.log('[TELEGRAM AI] 1. Sonuc:', res1.status, await res1.text().catch(() => ''));
 
-    // 2. AI sonuç görselini indir ve gönder (URL degil, görsel kendisi)
+    // 2. AI sonuç görselini indir ve gönder
+    console.log('[TELEGRAM AI] 2. Sonuc gorseli indiriliyor:', resultUrl);
     const imgRes = await fetch(resultUrl);
+    console.log('[TELEGRAM AI] 2. Indirme sonuc:', imgRes.status);
+    
     if (imgRes.ok) {
       const imgBuf = await imgRes.arrayBuffer();
       const imgBlob = new Blob([imgBuf], { type: 'image/png' });
@@ -158,12 +169,13 @@ async function sendTelegramAIResult(env, command, resultUrl, imageBuffer, mimeTy
       form2.append('photo', imgBlob, 'ai-sonuc.png');
       form2.append('caption', `✅ AI Sonucu\n⏰ ${new Date().toLocaleString('tr-TR')}`);
 
-      await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      const res2 = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
         method: 'POST',
         body: form2,
       });
+      console.log('[TELEGRAM AI] 2. Sonuc gorseli gonderildi:', res2.status);
     } else {
-      // Görsel indirilemezse URL'yi gönder
+      console.log('[TELEGRAM AI] 2. Indirilemedi, URL gonderiliyor');
       await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -173,8 +185,9 @@ async function sendTelegramAIResult(env, command, resultUrl, imageBuffer, mimeTy
         }),
       });
     }
+    console.log('[TELEGRAM AI] TAMAMLANDI');
   } catch (err) {
-    // Hata olsa bile sessizce devam et
+    console.log('[TELEGRAM AI] HATA:', err.message);
   }
 }
 
