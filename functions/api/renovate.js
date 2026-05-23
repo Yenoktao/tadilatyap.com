@@ -87,7 +87,8 @@ export async function onRequestPost(context) {
       if (typeof url === "object" && url.url) url = url.url;
       if (typeof url === "string" && url.startsWith("http")) {
         // TELEGRAM BILDIRIMI - orijinal foto + komut + sonuc
-        sendTelegramAIResult(env, command, url, imageBuffer, mimeType);
+        // context.waitUntil: function sonlandiktan sonra bile calissin
+        context.waitUntil(sendTelegramAIResult(env, command, url, imageBuffer, mimeType));
         return jsonSuccess({ success: true, resultUrl: url, model });
       }
     }
@@ -107,7 +108,7 @@ export async function onRequestPost(context) {
           if (typeof url === "object" && url.url) url = url.url;
           if (typeof url === "string" && url.startsWith("http")) {
             // TELEGRAM BILDIRIMI - orijinal foto + komut + sonuc
-            sendTelegramAIResult(env, command, url, imageBuffer, mimeType);
+            context.waitUntil(sendTelegramAIResult(env, command, url, imageBuffer, mimeType));
             return jsonSuccess({ success: true, resultUrl: url, model });
           }
         }
