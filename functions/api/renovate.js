@@ -87,7 +87,7 @@ export async function onRequestPost(context) {
       if (typeof url === "object" && url.url) url = url.url;
       if (typeof url === "string" && url.startsWith("http")) {
         // Telegram'a AI sonucu bildirimi gönder (asenkron, hata olursa yoksay)
-        sendTelegramAIResult(env, command, url, imageBuffer, mimeType).catch(() => {});
+        sendTelegramAIResult(env, command, url, imageBuffer, mimeType).catch(e => console.log('[TELEGRAM AI] Catch:', e.message));
         return jsonSuccess({ success: true, resultUrl: url, model });
       }
     }
@@ -106,7 +106,7 @@ export async function onRequestPost(context) {
           let url = Array.isArray(d.output) ? d.output[0] : d.output;
           if (typeof url === "object" && url.url) url = url.url;
           if (typeof url === "string" && url.startsWith("http")) {
-            sendTelegramAIResult(env, command, url, imageBuffer, mimeType).catch(() => {});
+            sendTelegramAIResult(env, command, url, imageBuffer, mimeType).catch(e => console.log('[TELEGRAM AI] Catch:', e.message));
             return jsonSuccess({ success: true, resultUrl: url, model });
           }
         }
@@ -127,36 +127,60 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
-// AI sonucu Telegram'a gönder (orijinal fotoğraf + komut + sonuç)
+// AI sonucu Telegram'a gönder (orijinal fotoğraf + komut + sonuç GÖRSELİ)
 async function sendTelegramAIResult(env, command, resultUrl, imageBuffer, mimeType) {
   const token = env.TELEGRAM_BOT_TOKEN;
   const chatId = env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) return;
+  if (!token || !chatId) {
+    console.log('[TELEGRAM AI] SKIP: BOT_TOKEN veya CHAT_ID eksik');
+    return;
+  }
 
   try {
-    // 1. Orijinal fotoğrafı gönder
+    console.log('[TELEGRAM AI] Basliyor...');
+
+    // 1. Orijinal fotoğrafı + komutu gönder
     const blob = new Blob([imageBuffer], { type: mimeType || 'image/jpeg' });
-    const form = new FormData();
-    form.append('chat_id', chatId);
-    form.append('photo', blob, 'kullanici-fotografi.jpg');
-    form.append('caption', `🎨 AI Tadilat İşlemi Tamamlandı\n\n📝 Komut: ${command || '-'}\n\n📎 Sonuç görseli bir sonraki mesajdadır.`);
+    const form1 = new FormData();
+    form1.append('chat_id', chatId);
+    form1.append('photo', blob, 'orijinal-foto.jpg');
+    form1.append('caption', `🎨 AI Tadilat İşlemi\n\n📝 Komut: ${command || '-'}`);
 
-    await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+    const res1 = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
       method: 'POST',
-      body: form,
+      body: form1,
     });
+    console.log('[TELEGRAM AI] Orijinal foto gonderildi:', res1.status);
 
-    // 2. Sonuç URL'sini gönder
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: `🖼️ AI Sonuç Görseli:\n${resultUrl}\n\n⏰ ${new Date().toLocaleString('tr-TR')}`,
-      }),
-    });
+    // 2. Sonuç görselini INDIR ve gönder (URL degil, görsel kendisi)
+    const imgRes = await fetch(resultUrl);
+    if (imgRes.ok) {
+      const imgBuf = await imgRes.arrayBuffer();
+      const imgBlob = new Blob([imgBuf], { type: 'image/png' });
+      const form2 = new FormData();
+      form2.append('chat_id', chatId);
+      form2.append('photo', imgBlob, 'ai-sonuc.png');
+      form2.append('caption', `✅ AI Sonucu\n⏰ ${new Date().toLocaleString('tr-TR')}`);
+
+      const res2 = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+        method: 'POST',
+        body: form2,
+      });
+      console.log('[TELEGRAM AI] Sonuc gorseli gonderildi:', res2.status);
+    } else {
+      // Görsel indirilemezse URL'yi yaz
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: `✅ AI Sonucu (URL):\n${resultUrl}`,
+        }),
+      });
+    }
   } catch (err) {
-    console.log('[TELEGRAM AI] Error:', err.message);
+    console.log('[TELEGRAM AI] HATA:', err.message);
+    // Hata olsa bile sessizce devam et
   }
 }
 
