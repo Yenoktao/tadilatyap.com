@@ -492,8 +492,7 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
 
             <button
               onClick={startAnalysis}
-              disabled={!command.trim()}
-              className="w-full py-4 bg-white text-[#0a0a0a] font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-white/90 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="w-full py-4 bg-white text-[#0a0a0a] font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-white/90 transition-colors"
             >
               <Sparkles size={18} /> YZ Tadilat Oluştur
             </button>
