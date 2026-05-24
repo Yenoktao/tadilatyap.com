@@ -60,13 +60,30 @@ function calculatePrice(metrekare: number, ilce: string): string {
   return `₺${(min / 1000).toFixed(0)}.000 - ₺${(max / 1000).toFixed(0)}.000`;
 }
 
-// Prompt oluşturucu - seçimlerden AI promptu üret
+// Ekranda gösterilen prompt (kullanıcı komutu)
 function buildPrompt(userCommand: string, alan: string, islem: string): string {
   const parts: string[] = [];
   if (alan && alan !== 'diger') parts.push(`${ALANLAR.find(a => a.key === alan)?.label || alan} tadilatı`);
   if (islem && islem !== 'diger') parts.push(`${ISLEMLER.find(i => i.key === islem)?.label || islem} işlemi`);
   parts.push(`Kullanıcı isteği: ${userCommand}`);
-  // Yapısal bütünlük ve ölçek sabitlemesi
+  return parts.join(', ');
+}
+
+// AI'a giden prompt (yapısal sabitlemeler + ölçüler dahil)
+function buildAIPrompt(userCommand: string, alan: string, islem: string, en?: number, boy?: number, yukseklik?: number): string {
+  const parts: string[] = [];
+  if (alan && alan !== 'diger') parts.push(`${ALANLAR.find(a => a.key === alan)?.label || alan} tadilatı`);
+  if (islem && islem !== 'diger') parts.push(`${ISLEMLER.find(i => i.key === islem)?.label || islem} işlemi`);
+  parts.push(`Kullanıcı isteği: ${userCommand}`);
+  // Ölçüler varsa ekle
+  const olcuParts: string[] = [];
+  if (en) olcuParts.push(`genişlik ${en}cm`);
+  if (boy) olcuParts.push(`derinlik ${boy}cm`);
+  if (yukseklik) olcuParts.push(`yükseklik ${yukseklik}cm`);
+  if (olcuParts.length > 0) {
+    parts.push(`Alan ölçüleri: ${olcuParts.join(', ')}`);
+  }
+  // Yapısal bütünlük ve ölçek sabitlemesi (gizli, kullanıcı görmez)
   parts.push('Mevcut duvar, pencere, kapı ve açıklık konumlarını aynen koru, yapısal düzeni değiştirme');
   parts.push('Gerçekçi ölçekte üret, perspektifi ve derinlik oranını koru, mevcut alana sığmayacak fazla eşya ekleme');
   return parts.join(', ');
@@ -110,6 +127,10 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   const [revizeCommand, setRevizeCommand] = useState('');
   const [showRevize, setShowRevize] = useState(false);
   const [revizeUsed, setRevizeUsed] = useState(false);
+  // Opsiyonel ölçüler
+  const [en, setEn] = useState<number | undefined>(undefined);
+  const [boy, setBoy] = useState<number | undefined>(undefined);
+  const [yukseklik, setYukseklik] = useState<number | undefined>(undefined);
   const [beforeAfterPos, setBeforeAfterPos] = useState(50);
   const [progress, setProgress] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -252,8 +273,8 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
     if (!imageFile || !command.trim()) return;
     setStep('analyzing'); setProgress(0); setError(''); setElapsedTime(0);
 
-    // Seçimlerden prompt oluştur
-    const fullCommand = buildPrompt(command.trim(), selectedAlan, selectedIslem);
+    // AI'a giden prompt (yapısal sabitlemeler + ölçüler dahil, kullanıcı görmez)
+    const fullCommand = buildAIPrompt(command.trim(), selectedAlan, selectedIslem, en, boy, yukseklik);
 
     const timer = setInterval(() => setElapsedTime(t => t + 1), 1000);
     const progressInterval = setInterval(() => setProgress(p => Math.min(p + 3, 90)), 1000);
@@ -570,6 +591,85 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
                 {selectedIslem && <span className="px-3 py-1 bg-white/10 rounded-full text-white/70 text-xs">{ISLEMLER.find(i => i.key === selectedIslem)?.label}</span>}
               </div>
             )}
+
+            {/* Opsiyonel Ölçü Seçimi */}
+            <div className="bg-[#002D72]/20 border border-[#019FDF]/20 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#019FDF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                  <line x1="12" y1="22.08" x2="12" y2="12" />
+                </svg>
+                <h4 className="font-raleway text-xs font-bold tracking-wider uppercase text-[#019FDF]">
+                  Eğer biliyorsanız ölçüleri girin
+                </h4>
+              </div>
+              <p className="font-raleway text-[10px] text-white/40 mb-3">
+                Kapalı ve dar alanlarda yapay zekanın daha tutarlı tahminler yapması için metraj seçimi tavsiye edilir.
+                Ölçüleri tam bilmiyorsanız yakın değerler seçin.
+              </p>
+
+              <div className="grid grid-cols-3 gap-3">
+                {/* Genişlik */}
+                <div>
+                  <label className="font-raleway text-[10px] text-white/50 uppercase tracking-wider block mb-1">Genişlik</label>
+                  <select
+                    value={en || ''}
+                    onChange={e => setEn(e.target.value ? parseInt(e.target.value) : undefined)}
+                    className="w-full p-2.5 bg-[#0A1628] border border-white/10 rounded-lg text-white font-raleway text-xs focus:border-[#019FDF] outline-none"
+                  >
+                    <option value="">Seçin</option>
+                    <option value="150">150 cm</option>
+                    <option value="200">200 cm</option>
+                    <option value="250">250 cm</option>
+                    <option value="300">300 cm</option>
+                    <option value="350">350 cm</option>
+                    <option value="400">400 cm</option>
+                    <option value="450">450 cm</option>
+                    <option value="500">500 cm</option>
+                    <option value="600">600 cm</option>
+                  </select>
+                </div>
+
+                {/* Derinlik */}
+                <div>
+                  <label className="font-raleway text-[10px] text-white/50 uppercase tracking-wider block mb-1">Derinlik</label>
+                  <select
+                    value={boy || ''}
+                    onChange={e => setBoy(e.target.value ? parseInt(e.target.value) : undefined)}
+                    className="w-full p-2.5 bg-[#0A1628] border border-white/10 rounded-lg text-white font-raleway text-xs focus:border-[#019FDF] outline-none"
+                  >
+                    <option value="">Seçin</option>
+                    <option value="150">150 cm</option>
+                    <option value="200">200 cm</option>
+                    <option value="250">250 cm</option>
+                    <option value="300">300 cm</option>
+                    <option value="350">350 cm</option>
+                    <option value="400">400 cm</option>
+                    <option value="450">450 cm</option>
+                    <option value="500">500 cm</option>
+                    <option value="600">600 cm</option>
+                  </select>
+                </div>
+
+                {/* Yükseklik */}
+                <div>
+                  <label className="font-raleway text-[10px] text-white/50 uppercase tracking-wider block mb-1">Yükseklik</label>
+                  <select
+                    value={yukseklik || ''}
+                    onChange={e => setYukseklik(e.target.value ? parseInt(e.target.value) : undefined)}
+                    className="w-full p-2.5 bg-[#0A1628] border border-white/10 rounded-lg text-white font-raleway text-xs focus:border-[#019FDF] outline-none"
+                  >
+                    <option value="">Seçin</option>
+                    <option value="220">220 cm</option>
+                    <option value="250">250 cm</option>
+                    <option value="270">270 cm</option>
+                    <option value="300">300 cm</option>
+                    <option value="350">350 cm</option>
+                  </select>
+                </div>
+              </div>
+            </div>
 
             <textarea
               value={command}
