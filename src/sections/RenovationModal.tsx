@@ -277,11 +277,6 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
 
     // Seçimlerden prompt oluştur
     const fullCommand = buildPrompt(cmd.trim(), selectedAlan, selectedIslem);
-    if (!imageFile || !cmd.trim()) return;
-    setStep('analyzing'); setProgress(0); setError(''); setElapsedTime(0);
-
-    // Seçimlerden prompt oluştur
-    const fullCommand = buildPrompt(cmd.trim(), selectedAlan, selectedIslem);
 
     const timer = setInterval(() => setElapsedTime(t => t + 1), 1000);
     const progressInterval = setInterval(() => setProgress(p => Math.min(p + 3, 90)), 1000);
