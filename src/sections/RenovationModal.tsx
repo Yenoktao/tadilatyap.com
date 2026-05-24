@@ -93,8 +93,8 @@ async function callRenovateAPI(imageBlob: Blob, command: string) {
 }
 
 export default function RenovationModal({ isOpen, onClose }: Props) {
-  // Akış adımları: upload → selection → command → analyzing → result
-  const [step, setStep] = useState<'upload' | 'selection' | 'command' | 'analyzing' | 'result'>('upload');
+  // Akış adımları: upload → selection → guide → command → analyzing → result
+  const [step, setStep] = useState<'upload' | 'selection' | 'guide' | 'command' | 'analyzing' | 'result'>('upload');
 
   // Seçim state'leri
   const [selectedAlan, setSelectedAlan] = useState('');
@@ -462,10 +462,89 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
             )}
 
             <button
-              onClick={() => setStep('command')}
+              onClick={() => setStep('guide')}
               className="w-full py-4 bg-white text-[#0a0a0a] font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-white/90 transition-colors"
             >
               Devam Et <ChevronRight size={18} />
+            </button>
+          </div>
+        )}
+
+        {/* === 3. KOMUT REHBERİ (ZORUNLU POPUP) === */}
+        {step === 'guide' && (
+          <div className="space-y-6">
+            <div className="text-center mb-4">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#F36621]/15 border border-[#F36621]/30 rounded-full mb-4">
+                <Lightbulb size={16} className="text-[#F36621]" />
+                <span className="font-raleway text-xs tracking-[0.2em] uppercase text-[#F36621]">
+                  Önemli Bilgi
+                </span>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">Komut Nasıl Yazılır?</h2>
+              <p className="text-white/60 text-sm">Daha iyi sonuçlar için bu rehberi okuyun</p>
+            </div>
+
+            <div className="bg-[#002D72]/20 border border-[#019FDF]/20 rounded-xl p-5 space-y-4">
+              {/* Yanlış Örnek */}
+              <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <XCircle size={16} className="text-red-400" />
+                  <span className="font-raleway text-xs font-bold uppercase tracking-wider text-red-400">
+                    Yanlış Komut
+                  </span>
+                </div>
+                <p className="font-raleway text-sm text-white/40 line-through">
+                  boya badana yap
+                </p>
+                <p className="font-raleway text-[10px] text-white/30 mt-1">
+                  Genel ve belirsiz — AI detayları tahmin etmek zorunda kalır
+                </p>
+              </div>
+
+              {/* Doğru Örnek */}
+              <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Check size={16} className="text-green-400" />
+                  <span className="font-raleway text-xs font-bold uppercase tracking-wider text-green-400">
+                    Doğru Komut
+                  </span>
+                </div>
+                <p className="font-raleway text-sm text-white/80">
+                  duvarlara açık bej mat boya, yerlere koyu ceviz laminant parke, büyük sürgülü cam balkon ekle
+                </p>
+                <p className="font-raleway text-[10px] text-white/30 mt-1">
+                  Renk, malzeme, detaylar net belirtilmiş — AI doğru sonuç üretir
+                </p>
+              </div>
+
+              {/* İpuçları */}
+              <div className="border-t border-white/10 pt-4">
+                <p className="font-raleway text-xs font-bold uppercase tracking-wider text-white/50 mb-3">
+                  Detaylı Komut Yazma İpuçları
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Renk', ex: 'açık bej, antrasit, beyaz' },
+                    { label: 'Malzeme', ex: 'parke, seramik, mermer' },
+                    { label: 'Dokulu', ex: 'mat, parlak, ahşap desenli' },
+                    { label: 'Ölçü', ex: 'geniş, yerden tavana, büyük cam' },
+                    { label: 'Stil', ex: 'modern, rustik, minimalist' },
+                    { label: 'Aksesuar', ex: 'LED şerit, süspot, pirinç kulplar' },
+                  ].map((item) => (
+                    <div key={item.label} className="bg-white/5 rounded-lg p-3">
+                      <p className="font-raleway text-xs font-semibold text-[#019FDF]">{item.label}</p>
+                      <p className="font-raleway text-[10px] text-white/40 mt-0.5">{item.ex}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setStep('command')}
+              className="w-full py-4 bg-[#F36621] text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-[#e55a1a] transition-colors"
+            >
+              <Check size={18} /> Anladım, Komut Yazmaya Geç
             </button>
           </div>
         )}
@@ -489,38 +568,6 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
               </div>
             )}
 
-            {/* Komut Rehberi */}
-            <div className="bg-[#002D72]/30 border border-[#019FDF]/20 rounded-xl p-4 space-y-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Lightbulb size={16} className="text-[#F36621]" />
-                <h4 className="font-raleway text-xs font-bold tracking-wider uppercase text-[#F36621]">
-                  Daha İyi Sonuçlar İçin
-                </h4>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-start gap-2">
-                  <XCircle size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
-                  <p className="font-raleway text-xs text-white/40 line-through">boya badana yap</p>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Check size={14} className="text-green-400 mt-0.5 flex-shrink-0" />
-                  <p className="font-raleway text-xs text-white/70">duvarlara açık bej mat boya, yerlere koyu renk laminant parke</p>
-                </div>
-              </div>
-
-              <div className="border-t border-white/5 pt-2 space-y-1.5">
-                <p className="font-raleway text-[10px] text-white/30 uppercase tracking-wider">İpuçları</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {['Renk belirtin', 'Malzeme seçin', 'Ölçü verin', 'Stil tanımlayın', 'Aydınlatma ekleyin'].map((tip) => (
-                    <span key={tip} className="px-2 py-1 bg-white/5 rounded-md font-raleway text-[10px] text-white/50">
-                      {tip}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
             <textarea
               value={command}
               onChange={e => setCommand(e.target.value)}
@@ -540,7 +587,7 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
           </div>
         )}
 
-        {/* === 4. ANALYZING === */}
+        {/* === 5. ANALYZING === */}
         {step === 'analyzing' && (
           <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8">
             <div className="w-20 h-20 rounded-full border-2 border-white/20 border-t-white animate-spin" />
@@ -555,7 +602,7 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
           </div>
         )}
 
-        {/* === 5. SONUÇ === */}
+        {/* === 6. SONUÇ === */}
         {step === 'result' && (
           <div className="space-y-6">
             {error && (
