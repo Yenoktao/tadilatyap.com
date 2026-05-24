@@ -243,8 +243,40 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   };
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); };
 
-  const startAnalysis = async (overrideCommand?: string) => {
-    const cmd = overrideCommand || command;
+  const startAnalysis = async () => {
+    if (!imageFile || !command.trim()) return;
+    setStep('analyzing'); setProgress(0); setError(''); setElapsedTime(0);
+
+    // Seçimlerden prompt oluştur
+    const fullCommand = buildPrompt(command.trim(), selectedAlan, selectedIslem);
+
+    const timer = setInterval(() => setElapsedTime(t => t + 1), 1000);
+    const progressInterval = setInterval(() => setProgress(p => Math.min(p + 3, 90)), 1000);
+
+    try {
+      const result = await callRenovateAPI(imageFile, fullCommand);
+      clearInterval(progressInterval);
+      if (result.success && result.resultUrl) {
+        setGeneratedImage(result.resultUrl);
+      } else { setError('AI sonuç üretemedi'); }
+      setProgress(100);
+      setStep('result');
+    } catch (err: any) {
+      clearInterval(progressInterval);
+      setError('AI hatası: ' + (err.message || 'Tekrar dene'));
+      setProgress(100);
+      setStep('result');
+    } finally {
+      clearInterval(timer);
+    }
+  };
+
+  const doRevizeAnalysis = async (cmd: string) => {
+    if (!imageFile || !cmd.trim()) return;
+    setStep('analyzing'); setProgress(0); setError(''); setElapsedTime(0);
+
+    // Seçimlerden prompt oluştur
+    const fullCommand = buildPrompt(cmd.trim(), selectedAlan, selectedIslem);
     if (!imageFile || !cmd.trim()) return;
     setStep('analyzing'); setProgress(0); setError(''); setElapsedTime(0);
 
@@ -596,7 +628,7 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
                             if (!revizeCommand.trim()) return;
                             setShowRevize(false);
                             setCommand(revizeCommand);
-                            await startAnalysis(revizeCommand);
+                            await doRevizeAnalysis(revizeCommand);
                           }}
                           disabled={!revizeCommand.trim()}
                           className="flex-1 py-2.5 bg-[#F36621] text-white font-bold rounded-lg text-sm hover:bg-[#e55a1a] transition-colors disabled:opacity-40"
