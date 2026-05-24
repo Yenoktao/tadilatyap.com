@@ -66,6 +66,9 @@ function buildPrompt(userCommand: string, alan: string, islem: string): string {
   if (alan && alan !== 'diger') parts.push(`${ALANLAR.find(a => a.key === alan)?.label || alan} tadilatı`);
   if (islem && islem !== 'diger') parts.push(`${ISLEMLER.find(i => i.key === islem)?.label || islem} işlemi`);
   parts.push(`Kullanıcı isteği: ${userCommand}`);
+  // Yapısal bütünlük ve ölçek sabitlemesi
+  parts.push('Mevcut duvar, pencere, kapı ve açıklık konumlarını aynen koru, yapısal düzeni değiştirme');
+  parts.push('Gerçekçi ölçekte üret, perspektifi ve derinlik oranını koru, mevcut alana sığmayacak fazla eşya ekleme');
   return parts.join(', ');
 }
 
