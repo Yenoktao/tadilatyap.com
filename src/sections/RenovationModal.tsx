@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   X, ImagePlus, Sparkles, ChevronRight, RefreshCw, Check,
-  AlertCircle, MapPin, Phone, Home, Paintbrush, Sofa, TreePine, Building, Camera
+  AlertCircle, MapPin, Phone, Home, Paintbrush, Sofa, TreePine, Building, Camera,
+  Lightbulb, XCircle
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 
@@ -488,10 +489,42 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
               </div>
             )}
 
+            {/* Komut Rehberi */}
+            <div className="bg-[#002D72]/30 border border-[#019FDF]/20 rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Lightbulb size={16} className="text-[#F36621]" />
+                <h4 className="font-raleway text-xs font-bold tracking-wider uppercase text-[#F36621]">
+                  Daha İyi Sonuçlar İçin
+                </h4>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-start gap-2">
+                  <XCircle size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
+                  <p className="font-raleway text-xs text-white/40 line-through">boya badana yap</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Check size={14} className="text-green-400 mt-0.5 flex-shrink-0" />
+                  <p className="font-raleway text-xs text-white/70">duvarlara açık bej mat boya, yerlere koyu renk laminant parke</p>
+                </div>
+              </div>
+
+              <div className="border-t border-white/5 pt-2 space-y-1.5">
+                <p className="font-raleway text-[10px] text-white/30 uppercase tracking-wider">İpuçları</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {['Renk belirtin', 'Malzeme seçin', 'Ölçü verin', 'Stil tanımlayın', 'Aydınlatma ekleyin'].map((tip) => (
+                    <span key={tip} className="px-2 py-1 bg-white/5 rounded-md font-raleway text-[10px] text-white/50">
+                      {tip}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <textarea
               value={command}
               onChange={e => setCommand(e.target.value)}
-              placeholder="Örn: Duvarları kırmızı boya, yerleri parke yap, büyük cam ekle..."
+              placeholder="Örn: Duvarları açık bej mat boya, yerlere koyu ceviz laminant parke, büyük sürgülü cam balkon ekle..."
               className="w-full h-40 p-5 bg-[#1a1a1a] border border-white/10 rounded-2xl text-white placeholder-white/30 focus:outline-none focus:border-white/30 resize-none text-lg"
             />
 
