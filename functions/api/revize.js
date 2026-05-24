@@ -70,6 +70,8 @@ export async function onRequestPost(context) {
       let url = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
       if (typeof url === "object" && url.url) url = url.url;
       if (typeof url === "string" && url.startsWith("http")) {
+        // TELEGRAM BILDIRIMI - Revize sonucu
+        context.waitUntil(sendTelegramAIResult(env, command, url, imageBuffer, mimeType));
         return jsonSuccess({ success: true, resultUrl: url, model });
       }
     }
@@ -87,7 +89,11 @@ export async function onRequestPost(context) {
         if (d.status === "succeeded") {
           let url = Array.isArray(d.output) ? d.output[0] : d.output;
           if (typeof url === "object" && url.url) url = url.url;
-          if (typeof url === "string" && url.startsWith("http")) return jsonSuccess({ success: true, resultUrl: url, model });
+          if (typeof url === "string" && url.startsWith("http")) {
+            // TELEGRAM BILDIRIMI - Revize sonucu
+            context.waitUntil(sendTelegramAIResult(env, command, url, imageBuffer, mimeType));
+            return jsonSuccess({ success: true, resultUrl: url, model });
+          }
         }
         if (d.status === "failed" || d.status === "canceled") return jsonError(`Prediction ${d.status}: ${d.error || ""}`, 500);
       }
@@ -118,6 +124,69 @@ function jsonError(message, status) {
     headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
   });
 }
+
+// AI sonucu Telegram'a gönder - ORIJINAL FOTO + KOMUT + SONUC GORSELI (REVIZE)
+async function sendTelegramAIResult(env, command, resultUrl, imageBuffer, mimeType) {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const chatId = env.TELEGRAM_CHAT_ID;
+  
+  console.log('[TELEGRAM REVIZE] Basladi. Token:', !!token, 'ChatID:', !!chatId);
+  
+  if (!token || !chatId) {
+    console.log('[TELEGRAM REVIZE] EKSİK: BOT_TOKEN veya CHAT_ID yok!');
+    return;
+  }
+
+  try {
+    // 1. Orijinal fotoğrafı gönder
+    console.log('[TELEGRAM REVIZE] 1. Orijinal foto gonderiliyor...');
+    const blob = new Blob([imageBuffer], { type: mimeType || 'image/jpeg' });
+    const form1 = new FormData();
+    form1.append('chat_id', chatId);
+    form1.append('photo', blob, 'orijinal-foto.jpg');
+    form1.append('caption', `🔄 REVIZE İşlemi\n\n📝 Komut: ${command || '-'}`);
+
+    const res1 = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: 'POST',
+      body: form1,
+    });
+    console.log('[TELEGRAM REVIZE] 1. Sonuc:', res1.status);
+
+    // 2. AI sonuç görselini indir ve gönder
+    console.log('[TELEGRAM REVIZE] 2. Sonuc gorseli indiriliyor:', resultUrl);
+    const imgRes = await fetch(resultUrl);
+    console.log('[TELEGRAM REVIZE] 2. Indirme sonuc:', imgRes.status);
+    
+    if (imgRes.ok) {
+      const imgBuf = await imgRes.arrayBuffer();
+      const imgBlob = new Blob([imgBuf], { type: 'image/png' });
+      const form2 = new FormData();
+      form2.append('chat_id', chatId);
+      form2.append('photo', imgBlob, 'ai-revize-sonuc.png');
+      form2.append('caption', `✅ Revize Sonucu\n⏰ ${new Date().toLocaleString('tr-TR')}`);
+
+      const res2 = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+        method: 'POST',
+        body: form2,
+      });
+      console.log('[TELEGRAM REVIZE] 2. Sonuc gorseli gonderildi:', res2.status);
+    } else {
+      // Görsel indirilemezse URL'yi gönder
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: `✅ Revize Sonucu:\n${resultUrl}`,
+        }),
+      });
+    }
+    console.log('[TELEGRAM REVIZE] TAMAMLANDI');
+  } catch (err) {
+    console.log('[TELEGRAM REVIZE] HATA:', err.message);
+  }
+}
+
 export async function onRequestOptions() {
   return new Response(null, {
     headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" },
