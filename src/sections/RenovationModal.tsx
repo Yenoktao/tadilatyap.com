@@ -105,6 +105,7 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   const [generatedImage, setGeneratedImage] = useState('');
   const [revizeCommand, setRevizeCommand] = useState('');
   const [showRevize, setShowRevize] = useState(false);
+  const [revizeUsed, setRevizeUsed] = useState(false);
   const [beforeAfterPos, setBeforeAfterPos] = useState(50);
   const [progress, setProgress] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -272,17 +273,26 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
   };
 
   const doRevizeAnalysis = async (cmd: string) => {
-    if (!imageFile || !cmd.trim()) return;
+    if (!imageFile || !cmd.trim() || !generatedImage) return;
+    setRevizeUsed(true);
+    setShowRevize(false);
     setStep('analyzing'); setProgress(0); setError(''); setElapsedTime(0);
-
-    // Seçimlerden prompt oluştur
-    const fullCommand = buildPrompt(cmd.trim(), selectedAlan, selectedIslem);
 
     const timer = setInterval(() => setElapsedTime(t => t + 1), 1000);
     const progressInterval = setInterval(() => setProgress(p => Math.min(p + 3, 90)), 1000);
 
     try {
-      const result = await callRenovateAPI(imageFile, fullCommand);
+      // /api/revize endpoint'i - orijinal foto + AI sonucu + yeni komut
+      const form = new FormData();
+      form.append('image', imageFile);
+      form.append('command', cmd.trim());
+      form.append('prevResultUrl', generatedImage);
+
+      const res = await fetch('/api/revize', { method: 'POST', body: form });
+      const text = await res.text();
+      if (!text) throw new Error('Empty response');
+      const result = JSON.parse(text);
+
       clearInterval(progressInterval);
       if (result.success && result.resultUrl) {
         setGeneratedImage(result.resultUrl);
@@ -596,12 +606,13 @@ export default function RenovationModal({ isOpen, onClose }: Props) {
                     <Phone size={20} /> WhatsApp'tan Keşif Randevusu Al
                   </a>
 
-                  {/* REVIZE ET BOLUMU */}
-                  {!showRevize ? (
+                  {/* REVIZE ET BOLUMU - Sadece 1 kez */}
+                  {!revizeUsed && !showRevize && (
                     <button onClick={() => setShowRevize(true)} className="flex items-center justify-center gap-2 w-full py-3 border border-[#F36621]/30 text-[#F36621] rounded-xl hover:border-[#F36621] hover:bg-[#F36621]/10 transition-all">
-                      <RefreshCw size={16} /> Revize Et — Yeni İstek Yaz
+                      <RefreshCw size={16} /> Revize Et — Yeni İstek Yaz (1 Hak)
                     </button>
-                  ) : (
+                  )}
+                  {!revizeUsed && showRevize && (
                     <div className="space-y-3 bg-[#1a1a1a] border border-white/10 rounded-xl p-4">
                       <p className="text-white/40 text-xs">Aynı fotoğraf üzerinden yeni bir istekte bulunun:</p>
                       <textarea
